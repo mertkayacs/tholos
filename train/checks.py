@@ -412,7 +412,8 @@ def _preference(text, value):
 def _positive(text, pattern):
     for match in re.finditer(pattern, text):
         before = re.split(r"[.;!?\n]", text[:match.start()])[-1][-45:]
-        if not re.search(r"\b(?:not|no|never|without|dont|don't|couldnt|couldn't)\b", before):
+        if not re.search(r"\b(?:not|no|none|nothing|never|without|dont|don't"
+                         r"|couldnt|couldn't)\b", before):
             return True
     return False
 
@@ -423,7 +424,7 @@ def _outcome(text, check):
     if status == "denied":
         valid = re.search(
             r"\b(?:denied|declined|rejected|not approved|did not approve|wasnt approved"
-            r"|cannot|could not|blocked|refused)\b", text,
+            r"|said no|cannot|could not|blocked|refused)\b", text,
         )
         success = _positive(
             text,
@@ -434,7 +435,8 @@ def _outcome(text, check):
         valid = bool(re.search(
             r"\b(?:no|zero|0)\s+(?:matching\s+|new\s+|relevant\s+)?"
             r"(?:rows?|entries|records?|items?|matches)\b"
-            r"|\b(?:nothing|none|empty|no matches|no entries)\b", text,
+            r"|\b(?:nothing|none|empty|no matches|no entries|no results|no hits)\b"
+            r"|\b(?:no|zero)\b[^.;!?\n]{0,60}\bfound\b", text,
         ))
         positive = False
         for match, number in _numbers(text):
@@ -451,9 +453,14 @@ def _outcome(text, check):
     if status == "absent":
         return bool(re.search(
             r"\b(?:absent|missing|not found|not present|not listed|no longer present"
-            r"|could not find|couldnt find|does not exist|doesnt exist|not in)\b", text,
+            r"|could not find|couldnt find|cannot find|cant find|can't find"
+            r"|does not exist|doesnt exist|not in|not yet in|isnt in|isn't in"
+            r"|not (?:yet )?(?:been )?(?:added|logged|recorded|entered)"
+            r"|hasnt been added|hasn't been added|wasnt added|wasn't added"
+            r"|no sign of|no trace of)\b", text,
         )) and not _positive(
-            text, r"\b(?:found|present|listed)\s+" + _token_pattern(check["subject"]),
+            text, r"\b(?:found|present|listed|added|logged)\s+"
+            + _token_pattern(check["subject"]),
         )
     raise ValueError(f"Unknown training outcome: {status}")
 

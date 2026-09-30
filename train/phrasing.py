@@ -51,6 +51,7 @@ def facts(scenario, text):
         candidates.extend([table["name"], *table["columns"]])
         candidates.extend(str(value) for row in table["rows"] for value in row.values()
                           if value is not None)
+    tables = {table["name"]: table for table in scenario["workspace"]["tables"]}
     for step in scenario.get("reference", []):
         args = step["args"]
         candidates.extend(args.get(key) for key in ("table", "title", "to", "url")
@@ -58,6 +59,14 @@ def facts(scenario, text):
         candidates.extend(args.get("columns", []))
         for row in args.get("rows", []) + [args.get("values", {})]:
             candidates.extend(str(value) for value in row.values() if value is not None)
+        if step["tool"] == "table_add" and args["table"] in tables:
+            columns = tables[args["table"]]["columns"]
+            candidates.append(f"column order ({', '.join(columns)})")
+            for row in args["rows"]:
+                candidates.append(f"{args['table']} entry " + ", ".join(
+                    f"{col} is {json.dumps(row.get(col), ensure_ascii=False)}" for col in columns))
+                candidates.append(", ".join(json.dumps(row.get(col), ensure_ascii=False)
+                                            for col in columns))
         for key in ("details", "text"):
             candidates.extend(line.strip().lstrip("-* ") for line in args.get(key, "").splitlines())
     for candidate in candidates:

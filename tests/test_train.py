@@ -14,8 +14,11 @@ import copy
 import importlib.util
 import json
 import random
+import re
 import sys
 import threading
+from collections import Counter
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -59,6 +62,178 @@ def fixture_packs():
     packs = T.load_packs(ROOT / "train" / "fixture_packs.jsonl")
     assert len(packs) >= 20
     return packs
+
+
+def realism_packs():
+    supplied = ROOT.parent / "tholos-ops" / "datagen" / "out" / "packs.jsonl"
+    return T.load_packs(supplied) if supplied.exists() else fixture_packs()
+
+
+def column_kind(table, column):
+    values = [row[column] for row in table["rows"] if row.get(column) not in (None, "")]
+    if column == table["columns"][0]:
+        return "key"
+    if values and all(type(value) is bool for value in values):
+        return "boolean"
+    if values and all(type(value) is int for value in values):
+        return "integer"
+    if values and all(type(value) in (int, float) for value in values):
+        return "decimal"
+    if values and all(isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)
+                      for value in values):
+        return "date"
+    if values and all(isinstance(value, str)
+                      and re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", value)
+                      for value in values):
+        return "time"
+    if (column in {"status", "state", "stage", "phase", "result"}
+            or column.endswith("_status")
+            or any(count > 1 for count in Counter(values).values())):
+        return "status"
+    return "text"
+
+
+def assert_realistic_cell(table, column, value, generic=False):
+    if value is None:
+        return
+    kind = column_kind(table, column)
+    old = [row[column] for row in table["rows"] if row.get(column) not in (None, "")]
+    if kind == "integer":
+        assert type(value) is int, (table["name"], column, value)
+    elif kind == "decimal":
+        assert type(value) in (int, float), (table["name"], column, value)
+    elif kind == "boolean":
+        assert type(value) is bool, (table["name"], column, value)
+    elif kind == "date":
+        assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(value))
+        date.fromisoformat(value)
+    elif kind == "time":
+        assert re.fullmatch(r"\d{2}:\d{2}", str(value))
+        datetime.strptime(value, "%H:%M")
+    elif kind == "status":
+        assert generic or value in old, (table["name"], column, value, old)
+    elif kind == "text":
+        assert isinstance(value, str)
+    if value in T.STATUSES + T.FLAGS:
+        assert generic or (kind == "status" and value in old), (column, value, kind)
+
+
+def assert_key_pattern(table, value):
+    originals = [row[table["columns"][0]] for row in table["rows"]]
+    if all(type(old) is int for old in originals):
+        assert type(value) is int and value > max(originals)
+    elif all(isinstance(old, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", old)
+             for old in originals):
+        date.fromisoformat(value)
+    elif all(isinstance(old, str) and re.search(r"\d", old) for old in originals):
+        shapes = {re.sub(r"\d+", "#", old) for old in originals}
+        assert isinstance(value, str) and re.sub(r"\d+", "#", value) in shapes, value
+    else:
+        assert isinstance(value, str) and value.strip() and len(value.split()) <= 8, value
+
+
+@pytest.mark.parametrize("tid,category,fn", T.TEMPLATES, ids=[t[0] for t in T.TEMPLATES])
+def test_reference_writes_fit_column_kinds(tid, category, fn):
+    produced = 0
+    for i, pack in enumerate(realism_packs()):
+        scenario = build_for(tid, fn, pack, i)
+        if scenario is None:
+            continue
+        produced += 1
+        tables = {table["name"]: copy.deepcopy(table)
+                  for table in scenario["workspace"]["tables"]}
+        keys = {table["name"]: {T._identity(row[table["columns"][0]])
+                               for row in scenario["workspace"]["tables"][j]["rows"]}
+                for j, table in enumerate(scenario["workspace"]["tables"])}
+        generic = set()
+        for step in scenario["reference"]:
+            tool, args = step["tool"], step["args"]
+            if tool == "table_create":
+                source = next((table for table in tables.values()
+                               if table["columns"] == args["columns"]), None)
+                if source and tid == "t-create-copy":
+                    tables[args["table"]] = dict(source, name=args["table"])
+                else:
+                    tables[args["table"]] = {"name": args["table"],
+                                              "columns": args["columns"], "rows": []}
+                    generic.add(args["table"])
+                keys[args["table"]] = set()
+            elif tool in {"table_add", "table_update"}:
+                table = tables[args["table"]]
+                rows = args["rows"] if tool == "table_add" else [args["values"]]
+                for row in rows:
+                    if tool == "table_add":
+                        assert set(row) == set(table["columns"]), (tid, i, row)
+                        for column, value in row.items():
+                            if value is None:
+                                assert (f"Leave {column} empty for {row[table['columns'][0]]}."
+                                        in _trigger_text(scenario)), (tid, i, row)
+                        key = row[table["columns"][0]]
+                        assert T._identity(key) not in keys[args["table"]], (tid, i, key)
+                        keys[args["table"]].add(T._identity(key))
+                        if args["table"] not in generic and tid != "t-create-copy":
+                            assert_key_pattern(table, key)
+                    for column, value in row.items():
+                        if tool == "table_update" and value is not None:
+                            assert column_kind(table, column) not in {"key", "text"}, (
+                                tid, i, column, value)
+                        assert_realistic_cell(table, column, value, args["table"] in generic)
+                        if column_kind(table, column) != "text":
+                            sentences = [item for item in pack["fresh"] if len(item.split()) >= 3]
+                            assert value not in sentences, (tid, i, column, value)
+        if scenario.get("interfere", {}).get("table"):
+            event = scenario["interfere"]
+            for column, value in event["set"].items():
+                assert_realistic_cell(tables[event["table"]], column, value)
+    assert produced >= 20, (tid, produced)
+
+
+@pytest.mark.parametrize("tid,category,fn", T.TEMPLATES, ids=[t[0] for t in T.TEMPLATES])
+def test_triggers_keep_prose_out_of_typed_rows_and_raw_handoffs(tid, category, fn):
+    produced = 0
+    for i, pack in enumerate(realism_packs()):
+        scenario = build_for(tid, fn, pack, i)
+        if scenario is None:
+            continue
+        produced += 1
+        text = _trigger_text(scenario)
+        decoder = json.JSONDecoder()
+        for match in re.finditer(r"\{", text):
+            try:
+                row, _ = decoder.raw_decode(text[match.start():])
+            except ValueError:
+                continue
+            for table in pack["tables"]:
+                for column, value in row.items():
+                    if column in table["columns"] and column_kind(table, column) != "text":
+                        sentences = [item for item in pack["fresh"] if len(item.split()) >= 3]
+                        assert value not in sentences, (tid, i, column, value)
+        if category == "handoff":
+            for table in pack["tables"]:
+                for row in table["rows"]:
+                    values = [str(row.get(column)) for column in table["columns"]]
+                    for start in range(len(values) - 3):
+                        assert ", ".join(values[start:start + 4]) not in text
+            for item in pack["fresh"]:
+                if item.count(",") >= 3:
+                    assert item not in text
+    assert produced >= 20, (tid, produced)
+
+
+@pytest.mark.parametrize("tid,category,fn", T.TEMPLATES, ids=[t[0] for t in T.TEMPLATES])
+def test_realistic_references_pass_training_checks(tid, category, fn):
+    produced = 0
+    for i, pack in enumerate(realism_packs()):
+        scenario = build_for(tid, fn, pack, i)
+        if scenario is None:
+            continue
+        static_validate(scenario, f"realism:{tid}:{i}")
+        result = scripted_run(scenario, scenario["reference"])
+        assert result["passed"], (tid, i, result["failed_assertions"])
+        produced += 1
+        if produced == 20:
+            break
+    assert produced == 20
 
 
 def transport(reference):
@@ -204,11 +379,14 @@ def audit_pack():
     }
 
 
-def test_fresh_csv_values_belong_in_separate_columns():
+def test_new_rows_have_separate_typed_column_values():
     table = audit_pack()["tables"][0]
-    row = T._fresh_row(table, random.Random(1), "co_109, opti seabird, theo lund, 14, true")
-    assert row == {"checkout_id": "co_109", "boat": "opti seabird",
-                   "sailor": "theo lund", "minutes": 14, "returned": True}
+    row = T._new_rows(table, random.Random(1), 1)[0]
+    assert row["checkout_id"] == "co_9"
+    assert row["boat"] in {"opti", "laser"}
+    assert row["sailor"] in {"theo", "mira"}
+    assert type(row["minutes"]) is int
+    assert type(row["returned"]) is bool
 
 
 def test_count_accepts_a_bare_number():
@@ -471,20 +649,83 @@ def test_pack_rejects_columns_that_hide_read_metadata(column):
     assert T.validate_pack(pack) is not None
 
 
-def test_no_duplicate_template_skips_an_existing_fresh_key():
+def test_no_duplicate_template_skips_an_existing_incoming_key(monkeypatch):
     pack = audit_pack()
-    pack["fresh"] = [f"co_1, boat {i}, person {i}, 20, false" for i in range(5)]
+    monkeypatch.setattr(T, "_new_rows", lambda table, rng, count, domain: [table["rows"][0].copy()])
     scenario = T.t_add_no_dup(pack, random.Random(2))
     assert not any(step["tool"] == "table_add" for step in scenario["reference"])
     assert scripted_run(scenario, scenario["reference"])["passed"]
 
 
-def test_fresh_named_fields_follow_their_column_labels():
+def test_named_row_fields_follow_their_column_labels():
     table = audit_pack()["tables"][0]
-    item = "sailor: theo lund, checkout_id: co_109, returned: true, minutes: 14, boat: opti seabird"
-    assert T._fresh_row(table, random.Random(1), item) == {
-        "checkout_id": "co_109", "boat": "opti seabird", "sailor": "theo lund",
-        "minutes": 14, "returned": True}
+    row = T._new_rows(table, random.Random(1), 1)[0]
+    named = T._format_rows(table, [row], random.Random(0))
+    for column, value in row.items():
+        assert f"{column} is {json.dumps(value)}" in named
+
+
+@pytest.mark.parametrize("column,keys,pattern", [
+    ("draw_month", [f"2024-{month:02d}" for month in range(7, 13)], "month"),
+    ("slot", ["17:00", "17:30", "18:00", "18:15", "18:45", "19:00"], "clock"),
+    ("slot", ["tue_10am", "tue_11am", "tue_12pm", "wed_1pm", "wed_3pm", "wed_9am"], "am_pm"),
+    ("day", ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"], "weekday"),
+    ("family", ["abbott", "brandt", "chen", "delgado", "ellis", "flores"], "surname"),
+])
+def test_new_keys_keep_calendar_and_name_meaning(column, keys, pattern):
+    table = {"name": "booking_slots", "columns": [column, "detail", "count"],
+             "rows": [{column: key, "detail": "morning visit", "count": 2} for key in keys]}
+    rows = T._new_rows(table, random.Random(1), 3)
+    for row in rows:
+        key = row[column]
+        assert key not in keys
+        if pattern == "month":
+            date.fromisoformat(key + "-01")
+        elif pattern == "clock":
+            clock = datetime.strptime(key, "%H:%M")
+            assert clock.minute % 15 == 0
+        elif pattern == "am_pm":
+            match = re.fullmatch(r"(?:tue|wed)_(\d{1,2})(am|pm)", key)
+            assert match and 1 <= int(match[1]) <= 12, key
+        elif pattern == "weekday":
+            assert key.startswith("next_"), key
+        else:
+            assert len(key.split()) == 1, key
+
+
+@pytest.mark.parametrize("column", ["status", "detail"])
+def test_unknown_column_values_are_explicitly_left_empty(column):
+    pack = audit_pack()
+    table = pack["tables"][0]
+    table["columns"].append(column)
+    for row in table["rows"]:
+        row[column] = None
+    scenario = T.t_add_items(pack, random.Random(1))
+    rows = next(step["args"]["rows"] for step in scenario["reference"]
+                if step["tool"] == "table_add")
+    for row in rows:
+        assert row[column] is None
+        assert f"Leave {column} empty for {row['checkout_id']}." in _trigger_text(scenario)
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+@pytest.mark.parametrize("fn", [T.t_ask_delay, T.t_followup_basic, T.t_followup_check])
+def test_followup_table_name_is_not_a_status_marker(fn):
+    pack = audit_pack()
+    pack["tables"][0]["name"] = "overdue_checkouts"
+    scenario = fn(pack, random.Random(1))
+    checks = [check for check in scenario["checks"] if check["kind"] == "follow_up"]
+    assert checks == [{"kind": "follow_up", "table": "overdue_checkouts"}]
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+def test_note_cleanup_preserves_a_negated_title_fact():
+    pack = audit_pack()
+    pack["notes"] = [{"title": "riesland", "body":
+                      "Correct entry for lot rs-24-04 is riesling, not riesland. "
+                      "Fixed in the log."}]
+    scenario = T.t_notes_replace(pack, random.Random(1))
+    assert scripted_run(scenario, scenario["reference"])["passed"]
 
 
 def test_conflict_reference_keeps_numeric_row_identity():
@@ -565,10 +806,218 @@ def test_phrasing_rejects_destructive_action_with_the_same_row_facts():
 
 def test_phrasing_keeps_structured_row_value_associations():
     scenario = T.t_add_items(audit_pack(), random.Random(1))
+    rows = next(step["args"]["rows"] for step in scenario["reference"]
+                if step["tool"] == "table_add")
+    scenario["trigger"]["text"] = f"Add these rows to checkouts: {json.dumps(rows)}."
     original = scenario["trigger"]["text"]
-    rewritten = original.replace('"returned": true', '"returned": false')
+    row = rows[0]
+    swapped = copy.deepcopy(rows)
+    swapped[0]["returned"] = not row["returned"]
+    rewritten = original.replace(json.dumps(rows), json.dumps(swapped))
     assert rewritten != original
     assert not F.preserves_facts(scenario, original, rewritten)
+
+
+@pytest.mark.parametrize("style_seed", [0, 5])
+def test_phrasing_keeps_named_and_ordered_row_associations(style_seed):
+    scenario = T.t_add_items(audit_pack(), random.Random(1))
+    table = scenario["workspace"]["tables"][0]
+    rows = next(step["args"]["rows"] for step in scenario["reference"]
+                if step["tool"] == "table_add")
+    rows[0].update(boat="opti", sailor="mira")
+    original = f"Add rows to checkouts: {T._format_rows(table, rows, random.Random(style_seed))}."
+    rewritten = original.replace('"opti"', '"swap"').replace('"mira"', '"opti"')
+    rewritten = rewritten.replace('"swap"', '"mira"')
+    assert not F.preserves_facts(scenario, original, rewritten)
+    assert F.preserves_facts(scenario, original, "Please " + original)
+    if "column order" in original:
+        assert not F.preserves_facts(scenario, original, original.replace(
+            "checkout_id, boat, sailor", "checkout_id, sailor, boat"))
+
+
+# ------------------------------------------------- TB2 grading and phrasing
+
+def _finish_messages(summary):
+    return [{"role": "assistant", "content": json.dumps(
+        {"thought": "done", "tool": "finish", "args": {"summary": summary}})}]
+
+
+def test_absent_outcome_accepts_a_clear_not_added_statement():
+    from checks import failures
+
+    scenario = {"checks": [{"kind": "outcome", "status": "absent", "subject": "fa_109"}]}
+    clear = ("The flight approval for fa_109 (steel bridge north, pilot theo, "
+             "85 m, approved) has not been added to the flight_approvals table yet.")
+    assert failures(scenario, _finish_messages(clear)) == []
+    added = "Added fa_109 to flight_approvals as requested."
+    assert failures(scenario, _finish_messages(added)) == scenario["checks"]
+
+
+def test_nothing_followup_accepts_teacher_absence_wording():
+    scenario = T.t_nothing_followup(audit_pack(), random.Random(1))
+    key = next(c["subject"] for c in scenario["checks"] if c["kind"] == "outcome")
+    steps = copy.deepcopy(scenario["reference"])
+    steps[-1]["args"]["summary"] = (
+        f"The checkout for {key} (opti seabird, pilot theo, 90 minutes, approved) "
+        f"has not been added to the checkouts table yet.")
+    assert scripted_run(scenario, steps)["passed"]
+
+
+def test_empty_outcome_accepts_no_noun_found_wording():
+    from checks import failures
+
+    scenario = {"checks": [{"kind": "outcome", "status": "empty", "subject": "sessions"}]}
+    clear = ("Scanned the sessions table for rows marked flagged in the "
+             "language_pair column. No flagged sessions were found.")
+    assert failures(scenario, _finish_messages(clear)) == []
+    found = "Found 3 matching rows and completed the work."
+    assert failures(scenario, _finish_messages(found)) == scenario["checks"]
+
+
+def test_denied_outcome_accepts_nothing_was_added_wording():
+    from checks import failures
+
+    scenario = {"checks": [{"kind": "outcome", "status": "denied", "subject": "checkouts"}]}
+    clear = "The owner denied the update; nothing was added to the checkouts table."
+    assert failures(scenario, _finish_messages(clear)) == []
+    approved = "The owner approved it and I completed the change."
+    assert failures(scenario, _finish_messages(approved)) == scenario["checks"]
+
+
+def test_memory_digest_asks_for_and_grades_a_row_count_line():
+    scenario = T.t_memory_digest(audit_pack(), random.Random(1))
+    text = _trigger_text(scenario)
+    assert "digest" in text and "row count" in text
+    write = next(step for step in scenario["reference"] if step["tool"] == "note_write")
+    assert "checkouts" in write["args"]["title"] and "digest" in write["args"]["title"]
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+    count = next(c["value"] for c in scenario["checks"] if c["kind"] == "count")
+    teacher = copy.deepcopy(scenario["reference"])
+    write = next(step for step in teacher if step["tool"] == "note_write")
+    write["args"]["text"] = f"checkouts currently holds {count} rows."
+    assert scripted_run(scenario, teacher)["passed"]
+    rich = copy.deepcopy(teacher)
+    write = next(step for step in rich if step["tool"] == "note_write")
+    write["args"]["text"] = ("Theo took the opti out twice, mira sailed the laser, "
+                             "and one trip is still open.")
+    assert not scripted_run(scenario, rich)["passed"]
+
+
+def test_memory_note_tally_names_the_row_count():
+    scenario = None
+    for seed in range(5):
+        scenario = T.t_memory_note(audit_pack(), random.Random(seed))
+        text = _trigger_text(scenario)
+        assert "row-count tally" in text or "how many rows" in text
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+@pytest.mark.parametrize("fn", [T.t_handoff_role, T.t_handoff_two, T.t_handoff_split])
+def test_handoff_task_titles_are_complete_words(fn):
+    for seed in range(10):
+        scenario = fn(audit_pack(), random.Random(seed))
+        for step in scenario["reference"]:
+            if step["tool"] == "task_add":
+                title = step["args"]["title"]
+                assert title.split()[-1] in step["args"]["details"].split(), title
+    scenario = T.t_handoff_role(audit_pack(), random.Random(1))
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+def test_generated_summaries_use_correct_plurals():
+    pack = copy.deepcopy(audit_pack())
+    for i, row in enumerate(pack["tables"][0]["rows"]):
+        row["boat"] = f"hull_{i}"
+    summaries = set()
+    for seed in range(15):
+        scenario = T.t_read_count(pack, random.Random(seed))
+        summary = scenario["reference"][-1]["args"]["summary"]
+        assert " 1 rows" not in summary
+        summaries.add(summary)
+        update = T.t_update_condition(pack, random.Random(seed))
+        assert " 1 rows" not in update["reference"][-1]["args"]["summary"]
+        multi = T.t_update_multi(pack, random.Random(seed))
+        if multi is not None:
+            assert " 1 rows" not in multi["reference"][-1]["args"]["summary"]
+    assert any(summary.startswith("There are 1 row in checkouts") for summary in summaries)
+    singular = None
+    for seed in range(15):
+        singular = T.t_handoff_data(pack, random.Random(seed))
+        task = singular["reference"][1]["args"]
+        assert re.fullmatch(r"Review \d+ (?:entry|entries) in checkouts", task["title"])
+        assert " 1 rows" not in task["details"]
+        if task["title"] == "Review 1 entry in checkouts":
+            assert "has 1 row where" in task["details"]
+            break
+    else:
+        pytest.fail("no single-row handoff generated")
+    assert scripted_run(singular, singular["reference"])["passed"]
+    for seed in range(30):
+        scenario = T.t_add_items(pack, random.Random(seed))
+        rows = next(step["args"]["rows"] for step in scenario["reference"]
+                    if step["tool"] == "table_add")
+        if len(rows) == 1:
+            assert scenario["reference"][-1]["args"]["summary"] == "Added 1 row to checkouts."
+            assert "these rows" not in _trigger_text(scenario)
+            assert "New rows" not in _trigger_text(scenario)
+            assert scripted_run(scenario, scenario["reference"])["passed"]
+            break
+    else:
+        pytest.fail("no single-row add generated")
+
+
+def test_fresh_items_render_as_sentences_without_stock_prefixes():
+    for pack in realism_packs():
+        for item in pack["fresh"]:
+            sentence = T._fresh_text(pack, item)
+            assert "Incoming update" not in sentence
+            assert sentence.endswith(".")
+    pack = audit_pack()
+    dump = "co_200 opti seabird theo lund 90 true"
+    assert T._fresh_text(pack, dump) == (
+        "New checkouts entry: co_200 opti seabird theo lund 90 true.")
+    prose = "the bosun asks about a double kayak on sunday"
+    assert T._fresh_text(pack, prose) == prose + "."
+    row = "co_201, laser, mira, 30, false"
+    assert T._fresh_text(pack, row) == (
+        "New checkouts entry: checkout id is co_201; boat is laser; "
+        "sailor is mira; minutes is 30; returned is false.")
+
+
+def test_conflict_note_uses_sentences_not_value_dumps():
+    pack = audit_pack()
+    pack["fresh"] = [
+        "co_200 opti seabird theo lund 90 true",
+        "co_201 laser race mira lund 45 false",
+        "co_202 opti seabird theo lund 15 true",
+        "co_203 laser race mira lund 60 false",
+        "co_204 opti seabird mira lund 75 true",
+    ]
+    scenario = T.t_conflict_note(pack, random.Random(1))
+    assert "Incoming update" not in _trigger_text(scenario)
+    final = next(step for step in reversed(scenario["reference"])
+                 if step["tool"] == "note_write")["args"]["text"]
+    assert re.search(r"^Owner added: New checkouts entry: co_20\d", final, re.M)
+    item_line = final.splitlines()[-1]
+    assert re.match(r"^- New checkouts entry: co_20\d", item_line)
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+def test_row_description_does_not_repeat_the_column_label():
+    table = {"name": "glaze_test_tiles", "columns": ["tile", "glaze", "cone"],
+             "rows": [{"tile": "g01", "glaze": "iron satin", "cone": "cone 6"}]}
+    assert T._row_description(table, table["rows"][0]) == (
+        "the glaze_test_tiles entry g01 with glaze iron satin and cone 6")
+
+
+def test_add_no_dup_introduces_the_new_row_before_its_columns():
+    scenario = None
+    for seed in range(6):
+        scenario = T.t_add_no_dup(audit_pack(), random.Random(seed))
+        text = _trigger_text(scenario)
+        assert "this row" in text
+        assert not re.search(r"\band column order\b", text)
+    assert scripted_run(scenario, scenario["reference"])["passed"]
 
 
 def _words(text):
@@ -1125,7 +1574,7 @@ def test_rollout_retries_failed_zero_step_run(monkeypatch):
     scenario = T.t_notes_append(fixture_packs()[0], random.Random(0))
     failed = {"passed": False, "failed_assertions": [{"type": "finished"}], "steps": 0,
               "invalid_json_count": 0, "tokens": {"in": 0, "out": 0}, "seconds": 0.1,
-              "messages": []}
+              "messages": [], "status": "failed", "error": "teacher timed out"}
     good = R.bench.run_scenario(scenario, PROFILE, transport(scenario["reference"]))
     calls = iter([failed, good])
     sleeps = []
@@ -1344,10 +1793,10 @@ def test_kernel_partial_stage_failure_continues(tmp_path, monkeypatch, capsys, f
     assert f"stage {failed_stage} failed; continuing with available output" in output
 
 
-def test_kernel_rollout_only_skips_pack_scenario_and_phrasing_stages(tmp_path, monkeypatch, capsys):
+def test_kernel_rollout_only_reuses_a_phrased_shard(tmp_path, monkeypatch, capsys):
     datagen = datagen_module()
     shard = tmp_path / "scenarios_kaggle.jsonl"
-    write_jsonl(shard, [{"id": "hosted-scenario-id"}])
+    write_jsonl(shard, [{"id": "hosted-scenario-id", "phrased": True}])
     monkeypatch.setattr(datagen, "WORK", str(tmp_path))
     # Rollout-only mode should not need domains.txt or regenerate saved IDs.
     monkeypatch.setattr(datagen, "TRAIN", str(tmp_path / "train"))
@@ -1369,7 +1818,7 @@ def test_kernel_rollout_only_skips_pack_scenario_and_phrasing_stages(tmp_path, m
     assert [name for name, _, _ in called] == ["rollouts", "build"]
     rollout_args = called[0][1]
     assert rollout_args[rollout_args.index("--scenarios") + 1] == str(shard)
-    assert read_jsonl(shard) == [{"id": "hosted-scenario-id"}]
+    assert read_jsonl(shard) == [{"id": "hosted-scenario-id", "phrased": True}]
     assert terminated == [True]
     summary = json.loads(capsys.readouterr().out.splitlines()[-1].removeprefix("SUMMARY "))
     assert summary["rollout_only"] is True
