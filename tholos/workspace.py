@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from tholos.db import now, tx
+from tholos.db import clock, now, tx
 
 DB = sqlite3.Connection
 
@@ -90,6 +90,9 @@ def set_setting(db: DB, key: str, value: Any) -> None:
 
 def timezone(db: DB) -> tzinfo:
     name = get_setting(db, "timezone") or os.environ.get("TZ")
+    if name == "UTC":
+        # Needs no zone database, which Windows lacks unless the tzdata package is installed.
+        return UTC
     if name:
         return ZoneInfo(name)
     try:
@@ -245,7 +248,7 @@ def list_schedules(db: DB, agent_id: int | None = None) -> list[dict]:
 def save_schedule(
     db: DB, id: int | None, agent_id: int, every: str, prompt: str, enabled: bool = True
 ) -> int:
-    next_at = parse_every(every)(datetime.now(timezone(db))).astimezone(UTC)
+    next_at = parse_every(every)(clock.now().astimezone(timezone(db))).astimezone(UTC)
     with tx(db):
         return db.execute(
             "INSERT INTO schedules(id,agent_id,every,prompt,next_at,enabled) VALUES(?,?,?,?,?,?) "
@@ -318,12 +321,16 @@ def queue_run(
     task_id: int | None = None,
     due_at: str | None = None,
     dedupe_key: str | None = None,
+    delay: timedelta = timedelta(0),
 ) -> int | None:
     with tx(db):
+        # One clock read, so a delayed run is due exactly `delay` after it was created.
+        created = now()
+        due = due_at or (datetime.fromisoformat(created) + delay).strftime("%Y-%m-%dT%H:%M:%SZ")
         row = db.execute(
             "INSERT INTO runs(agent_id,task_id,trigger,trigger_kind,due_at,dedupe_key,created_at) "
             "VALUES(?,?,?,?,?,?,?) ON CONFLICT(dedupe_key) DO NOTHING RETURNING id",
-            (agent_id, task_id, trigger, kind, due_at or now(), dedupe_key, now()),
+            (agent_id, task_id, trigger, kind, due, dedupe_key, created),
         ).fetchone()
         if row:
             add_event(db, "worker", "run", str(row[0]), "Run queued")

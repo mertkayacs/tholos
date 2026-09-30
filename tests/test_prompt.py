@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 from tholos import prompt, tools
 from tholos import workspace as w
@@ -40,6 +41,21 @@ def test_prompt_exact_and_stable(db):
         '<tool_response>\n{"answer":"Yes"}\n</tool_response>'
     )
     assert prompt.messages(db, agent, {"trigger": "Check"})[0]["content"] == expected
+
+
+def test_trigger_shows_the_pinned_time_and_weekday(db, pin_clock):
+    w.set_setting(db, "timezone", "America/New_York")
+    pin_clock(datetime(2026, 6, 1, 9, tzinfo=ZoneInfo("America/New_York")))
+    assert prompt.trigger(db, "Check") == "Now: 2026-06-01T09:00:00-04:00, Monday\nCheck"
+    assert prompt.trigger(db, "Check").startswith("Now: 2026-06-01T09:00:01-04:00, Monday\n")
+
+
+def test_trigger_uses_the_real_clock_by_default(db):
+    w.set_setting(db, "timezone", "America/New_York")
+    zone = ZoneInfo("America/New_York")
+    before = datetime.now(zone).replace(microsecond=0)
+    line = prompt.trigger(db, "Check").split(", ")[0].removeprefix("Now: ")
+    assert before <= datetime.fromisoformat(line) <= datetime.now(zone)
 
 
 def test_briefing_bounds_and_secrets(db):

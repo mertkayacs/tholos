@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -144,6 +145,14 @@ def test_assertion_failure_is_not_retried(no_backoff):
     assert not result["passed"]
     assert result["status"] == "done" and result["error"] is None
     assert not result.get("infra_failed") and len(requests) == 1 and no_backoff == []
+
+
+def test_rollouts_run_on_the_real_clock(no_backoff):
+    before = datetime.now(UTC).replace(microsecond=0)
+    with pipeline.TeacherTransport(scripted_transport([ADD, FINISH], [])) as transport:
+        result = R.run_one(scenario(), PROFILE, "local", transport=transport)
+    shown = result["messages"][1]["content"].split(", ")[0].removeprefix("Now: ")
+    assert result["passed"] and before <= datetime.fromisoformat(shown) <= datetime.now(UTC)
 
 
 def test_empty_transport_error_is_infrastructure_failure(no_backoff):

@@ -4,13 +4,13 @@ import json
 import re
 import sqlite3
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pytest
 from openpyxl import load_workbook
 
 from tholos import workspace as w
-from tholos.db import connect, init, now, tx
+from tholos.db import clock, connect, init, now, tx
 
 
 def agent(db, name="Scout"):
@@ -33,6 +33,28 @@ def test_database(tmp_path):
     with pytest.raises(ValueError, match="newer"):
         init(connection)
     connection.close()
+
+
+def test_clock_is_real_until_pinned(pin_clock):
+    before = datetime.now(UTC)
+    assert before <= clock.now() <= datetime.now(UTC)
+    pin_clock(datetime(2026, 6, 1, 9, tzinfo=ZoneInfo("Europe/Istanbul")))
+    assert [now(), now()] == ["2026-06-01T06:00:00Z", "2026-06-01T06:00:01Z"]
+    assert clock.now() == datetime(2026, 6, 1, 6, 0, 2, tzinfo=UTC)
+    clock.unpin()
+    assert before <= clock.now() <= datetime.now(UTC)
+
+
+def test_utc_needs_no_zone_database(db, monkeypatch):
+    def missing(key):
+        raise ZoneInfoNotFoundError(key)
+
+    monkeypatch.setattr(w, "ZoneInfo", missing)
+    w.set_setting(db, "timezone", "UTC")
+    assert w.timezone(db) is UTC
+    w.set_setting(db, "timezone", None)
+    monkeypatch.setenv("TZ", "UTC")
+    assert w.timezone(db) is UTC
 
 
 def test_model_timeout_storage(db):
@@ -103,6 +125,18 @@ def test_models_agents_schedules(db):
         w.save_model(db, None, "Bad", "url", "m", None, "bad", 0, 0)
     with pytest.raises(ValueError):
         w.save_agent(db, None, "", "role", None, [])
+
+
+def test_delayed_run_is_due_exactly_delay_after_creation(db, pin_clock):
+    aid = agent(db)
+    pin_clock(datetime(2026, 6, 1, 9, tzinfo=UTC))
+    delayed = w.get_run(db, w.queue_run(db, aid, "x", "follow_up", delay=timedelta(minutes=5)))
+    assert delayed["created_at"] == "2026-06-01T09:00:00Z"
+    assert delayed["due_at"] == "2026-06-01T09:05:00Z"
+    now_run = w.get_run(db, w.queue_run(db, aid, "x", "message"))
+    assert now_run["due_at"] == now_run["created_at"]
+    fixed = w.queue_run(db, aid, "x", "schedule", due_at="2026-06-02T00:00:00Z")
+    assert w.get_run(db, fixed)["due_at"] == "2026-06-02T00:00:00Z"
 
 
 def test_tasks_runs_waiting_and_events(db):

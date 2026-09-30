@@ -9,6 +9,7 @@ import pytest
 
 from tholos import fetch, runner, tools, worker
 from tholos import workspace as w
+from tholos.db import clock as runtime_clock
 
 
 def reply(tool, **args):
@@ -379,19 +380,39 @@ def test_stale_worker_cannot_commit(db, setup):
 @pytest.fixture
 def model_clock(monkeypatch):
     clock = [datetime.now(UTC).replace(microsecond=0)]
-
-    class Clock(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return clock[0]
-
-    def stamp():
-        return clock[0].strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    monkeypatch.setattr(runner, "datetime", Clock)
-    monkeypatch.setattr(runner, "now", stamp)
-    monkeypatch.setattr(worker, "now", stamp)
+    monkeypatch.setattr(runtime_clock, "now", lambda: clock[0])
     return clock
+
+
+def test_runtime_stamps_follow_a_pinned_clock(db, setup, pin_clock):
+    aid, _ = setup
+    w.set_setting(db, "timezone", "UTC")
+    pin_clock(datetime(2026, 6, 1, 9, tzinfo=UTC))
+    w.save_schedule(db, None, aid, "5m", "Check")
+    w.queue_run(db, aid, "Check", "message")
+    leases = []
+
+    def after_step(conn, run_id, tool):
+        row = conn.execute("SELECT lease_until FROM runs WHERE id=?", (run_id,)).fetchone()
+        leases.append(row[0])
+
+    model = scripted(
+        db, [reply("follow_up", minutes=5, note="Again"), reply("finish", summary="Done")]
+    )
+    run = drive(db, model, after_step)
+    follow = w.list_runs(db, status="queued")[0]
+    stamps = [
+        w.list_schedules(db)[0]["next_at"],
+        leases[0],
+        run["created_at"],
+        run["started_at"],
+        run["ended_at"],
+        follow["due_at"],
+    ]
+    assert all(stamp.startswith("2026-06-01T09:") for stamp in stamps), stamps
+    assert run["messages"][1]["content"].startswith("Now: 2026-06-01T09:")
+    due, created = (datetime.fromisoformat(follow[key]) for key in ("due_at", "created_at"))
+    assert due - created == timedelta(minutes=5)
 
 
 @pytest.mark.parametrize("timeout,elapsed", [(600, 121), (600, 600), (120, 120), (1, 1)])

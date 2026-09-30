@@ -641,7 +641,7 @@ def _run_ctx(db, run: dict) -> dict:
         end = (
             datetime.strptime(ended, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
             if ended
-            else datetime.now(UTC)
+            else db_module.clock.now()
         )
         seconds = max(0, int((end - begin).total_seconds()))
         duration = f"{seconds // 60}m {seconds % 60:02d}s" if seconds >= 60 else f"{seconds}s"

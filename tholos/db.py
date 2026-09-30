@@ -2,7 +2,7 @@ import os
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 SCHEMA = """
@@ -108,5 +108,33 @@ def tx(db: sqlite3.Connection) -> Iterator[None]:
         db.execute("RELEASE nested" if nested else "COMMIT")
 
 
+class Clock:
+    """The runtime's only source of time.
+
+    The benchmark pins it so runs repeat exactly. A pinned clock starts at the given
+    aware datetime and moves one second per read, so timestamps stay strictly ordered.
+    It is process-wide: pin it from one thread at a time.
+    """
+
+    def __init__(self) -> None:
+        self._pinned: datetime | None = None
+
+    def pin(self, start: datetime) -> None:
+        self._pinned = start.astimezone(UTC)
+
+    def unpin(self) -> None:
+        self._pinned = None
+
+    def now(self) -> datetime:
+        if self._pinned is None:
+            return datetime.now(UTC)
+        at = self._pinned
+        self._pinned = at + timedelta(seconds=1)
+        return at
+
+
+clock = Clock()
+
+
 def now() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return clock.now().strftime("%Y-%m-%dT%H:%M:%SZ")

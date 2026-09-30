@@ -5,7 +5,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import nullcontext
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -15,7 +15,10 @@ import httpx
 
 from tholos import fetch, prompt, runner, worker
 from tholos import workspace as w
-from tholos.db import connect, init
+from tholos.db import clock, connect, init
+
+# Where a pinned benchmark run starts: a Monday, read in UTC on every host.
+CLOCK_START = datetime(2026, 6, 1, 9, tzinfo=UTC)
 
 
 def _number(value: Any) -> Decimal | None:
@@ -315,7 +318,10 @@ async def _execute(
 
 
 def run_scenario(
-    scenario: dict, profile: dict, transport: httpx.BaseTransport | None = None
+    scenario: dict,
+    profile: dict,
+    transport: httpx.BaseTransport | None = None,
+    pin_clock: bool = False,
 ) -> dict:
     previous = fetch.FIXTURES
     start = time.monotonic()
@@ -323,6 +329,11 @@ def run_scenario(
         db = connect(str(Path(directory) / "tholos.db"))
         try:
             init(db)
+            if pin_clock:
+                # Timestamps reach the prompt and the tool results, and greedy decoding follows
+                # them, so a benchmark run needs a fixed clock and zone to repeat on any host.
+                w.set_setting(db, "timezone", "UTC")
+                clock.pin(CLOCK_START)
             run_id = _load(db, scenario, profile)
             initial = snapshot(db)
             fetch.FIXTURES = scenario.get("fixtures", {})
@@ -348,6 +359,8 @@ def run_scenario(
                 "messages": run["messages"],
             }
         finally:
+            if pin_clock:
+                clock.unpin()
             fetch.FIXTURES = previous
             db.close()
 
@@ -385,7 +398,7 @@ def bench(
     counts = defaultdict(lambda: [0, 0])
     with (open(out, "w", encoding="utf-8") if out else nullcontext()) as file:
         for scenario in items:
-            result = run_scenario(scenario, profile)
+            result = run_scenario(scenario, profile, pin_clock=True)
             results.append(result)
             counts[result["category"]][0] += result["passed"]
             counts[result["category"]][1] += 1

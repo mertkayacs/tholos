@@ -2,7 +2,7 @@ import operator
 import re
 import shlex
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
 import httpx
@@ -359,12 +359,13 @@ def run_tool(db: w.DB, run: dict, agent: dict, name: str, args: dict) -> dict:
                 raise ValueError("Follow-up must be between 5 and 10080 minutes")
             from tholos.prompt import follow_up_trigger
 
-            due = (datetime.now(UTC) + timedelta(minutes=args["minutes"])).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
             result = {
                 "run": w.queue_run(
-                    db, agent["id"], follow_up_trigger(args["note"]), "follow_up", due_at=due
+                    db,
+                    agent["id"],
+                    follow_up_trigger(args["note"]),
+                    "follow_up",
+                    delay=timedelta(minutes=args["minutes"]),
                 )
             }
         else:

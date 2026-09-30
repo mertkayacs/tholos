@@ -1,12 +1,23 @@
 import json
+import os
+import re
+import subprocess
+import sys
+from datetime import UTC, datetime, timedelta
+from itertools import count
+from pathlib import Path
+from zoneinfo import ZoneInfoNotFoundError
 
 import httpx
 import pytest
 
+from tholos import db as db_module
 from tholos import fetch, tools
 from tholos import workspace as w
 from tholos.bench import runner as b
+from tholos.db import clock
 
+ROOT = Path(__file__).resolve().parents[1]
 PROFILE = {
     "base_url": "http://local.test/v1",
     "model": "small",
@@ -267,14 +278,120 @@ def test_waiting_and_denied_approval():
     assert result["passed"] and "the owner denied this" in result["messages"][3]["content"]
 
 
+def test_pinned_runs_repeat_exactly(monkeypatch):
+    # The real clock moves five seconds per read, so a timestamp that escapes the pin differs.
+    reads = count()
+
+    class Wandering(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 30, tzinfo=UTC) + timedelta(seconds=5 * next(reads))
+
+    monkeypatch.setattr(db_module, "datetime", Wandering)
+    monkeypatch.setenv("TZ", "America/New_York")  # a pinned run must not show the host zone
+    update = {
+        "tool": "table_update",
+        "args": {"table": "items", "row": 1, "values": {"title": "New"}},
+    }
+    reference = [update, {"tool": "finish", "args": {"summary": "Done"}}]
+    item = scenario(reference, [{"type": "finished"}])
+    item["workspace"]["tables"] = [
+        {"name": "items", "columns": ["title"], "rows": [{"title": "Original"}]}
+    ]
+    pinned = [b.run_scenario(item, PROFILE, transport(reference), pin_clock=True) for _ in range(2)]
+    assert pinned[0]["messages"] == pinned[1]["messages"]
+    now_line = pinned[0]["messages"][1]["content"].split("\n")[0]
+    assert re.fullmatch(r"Now: 2026-06-01T09:\d\d:\d\d\+00:00, Monday", now_line)
+    assert '"updated_at":"2026-06-01T09:' in pinned[0]["messages"][3]["content"]
+    free = [b.run_scenario(item, PROFILE, transport(reference)) for _ in range(2)]
+    assert all(run["passed"] for run in free)
+    assert free[0]["messages"] != free[1]["messages"]
+
+
+HOST_ZONE_SCRIPT = """
+import json, sys
+from pathlib import Path
+
+import httpx
+
+from tholos.bench.runner import run_scenario
+from tholos.workspace import dumps
+
+scenario = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+steps = iter(scenario["reference"])
+
+
+def respond(request):
+    step = next(steps)
+    value = {"thought": "Next.", "tool": step["tool"], "args": step["args"]}
+    return httpx.Response(200, json={"choices": [{"message": {"content": dumps(value)}}]})
+
+
+profile = {"base_url": "http://host.test/v1", "model": "reference", "api_key": None,
+           "json_mode": "schema", "temperature": 0, "max_tokens": 512}
+result = run_scenario(scenario, profile, httpx.MockTransport(respond), pin_clock=True)
+print(json.dumps(result["messages"]))
+"""
+
+
+def test_pinned_prompt_is_the_same_on_every_host_timezone():
+    path = ROOT / "tholos" / "bench" / "scenarios" / "conflict" / "conflict-001.json"
+    outputs = []
+    for zone in ("America/New_York", "Asia/Tokyo", None):  # None keeps this machine's own zone
+        env = {key: value for key, value in os.environ.items() if key != "TZ"}
+        if zone:
+            env["TZ"] = zone
+        done = subprocess.run(
+            [sys.executable, "-c", HOST_ZONE_SCRIPT, str(path)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert done.returncode == 0, done.stderr
+        outputs.append(done.stdout)
+    assert outputs[0] == outputs[1] == outputs[2]
+    messages = json.loads(outputs[0])
+    assert re.match(r"Now: 2026-06-01T09:\d\d:\d\d\+00:00, Monday\n", messages[1]["content"])
+    assert any('"updated_at":"2026-06-01T09:' in message["content"] for message in messages)
+
+
+def test_pinned_run_needs_no_zone_database(monkeypatch):
+    def missing(key):
+        raise ZoneInfoNotFoundError(key)
+
+    monkeypatch.setattr(w, "ZoneInfo", missing)
+    ref = [{"tool": "finish", "args": {"summary": "Done"}}]
+    result = b.run_scenario(
+        scenario(ref, [{"type": "finished"}]), PROFILE, transport(ref), pin_clock=True
+    )
+    assert result["passed"] and "+00:00, Monday\n" in result["messages"][1]["content"]
+
+
+def test_pinned_clock_is_released_after_the_run(pin_clock):
+    # The fixture unpins on teardown, so a broken release cannot leak into other tests.
+    ref = [{"tool": "finish", "args": {"summary": "Done"}}]
+    before = datetime.now(UTC)
+    b.run_scenario(scenario(ref, [{"type": "finished"}]), PROFILE, transport(ref), pin_clock=True)
+    assert clock.now() >= before
+    with pytest.raises(ValueError, match="Unknown assertion type"):
+        b.run_scenario(scenario(ref, [{"type": "nope"}]), PROFILE, transport(ref), pin_clock=True)
+    assert clock.now() >= before
+
+
 def test_bench_filter_output(tmp_path, monkeypatch, capsys):
     ref = [{"tool": "finish", "args": {"summary": "Done"}}]
     first = scenario(ref, [{"type": "finished"}])
     second = first | {"id": "local-002", "category": "table_add"}
     (tmp_path / "one.json").write_text(json.dumps(first))
     (tmp_path / "two.json").write_text(json.dumps(second))
-    run = b.run_scenario
-    monkeypatch.setattr(b, "run_scenario", lambda item, profile: run(item, profile, transport(ref)))
+    run, pins = b.run_scenario, []
+
+    def pinned_run(item, profile, pin_clock):
+        pins.append(pin_clock)
+        return run(item, profile, transport(ref), pin_clock=pin_clock)
+
+    monkeypatch.setattr(b, "run_scenario", pinned_run)
     out = tmp_path / "results.jsonl"
     results = b.bench(
         "http://local.test/v1",
@@ -285,6 +402,7 @@ def test_bench_filter_output(tmp_path, monkeypatch, capsys):
         out=str(out),
     )
     assert len(results) == 1 and json.loads(out.read_text())["id"] == "local-001"
+    assert pins == [True]
     assert "notes" in capsys.readouterr().out
     with pytest.raises(ValueError, match="No benchmark"):
         b.bench("url", "model", scenarios=str(tmp_path), only="missing")

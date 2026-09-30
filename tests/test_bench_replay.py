@@ -50,7 +50,7 @@ def test_reference_replay(path: Path | None, monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(socket, "getaddrinfo", no_network)
     try:
-        result = run_scenario(scenario, PROFILE, httpx.MockTransport(respond))
+        result = run_scenario(scenario, PROFILE, httpx.MockTransport(respond), pin_clock=True)
     except Exception as exc:
         failure = {
             "id": scenario["id"],

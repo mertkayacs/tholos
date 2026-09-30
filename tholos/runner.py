@@ -4,13 +4,13 @@ import json
 import time
 from collections.abc import Callable
 from contextlib import suppress
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 import httpx
 
 from tholos import fetch, model, prompt, rules, tools
 from tholos import workspace as w
-from tholos.db import now, tx
+from tholos.db import clock, now, tx
 
 LEASE_MARGIN = 30
 
@@ -48,7 +48,7 @@ def _fence(db: w.DB, run: dict) -> None:
 def _lease(db: w.DB, run: dict, timeout: float = 120) -> None:
     with tx(db):
         _fence(db, run)
-        until = (datetime.now(UTC) + timedelta(seconds=lease_seconds(timeout))).strftime(
+        until = (clock.now() + timedelta(seconds=lease_seconds(timeout))).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
         db.execute("UPDATE runs SET lease_until=? WHERE id=?", (until, run["id"]))

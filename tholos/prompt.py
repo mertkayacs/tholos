@@ -2,6 +2,7 @@ from datetime import datetime
 
 from tholos import rules, tools
 from tholos import workspace as w
+from tholos.db import clock
 
 
 def task_trigger(id: int, creator: str, title: str, details: str) -> str:
@@ -72,7 +73,7 @@ def system(db: w.DB, agent: dict) -> str:
 
 
 def trigger(db: w.DB, text: str, at: datetime | None = None) -> str:
-    local = (at or datetime.now(w.timezone(db))).astimezone(w.timezone(db))
+    local = (at or clock.now()).astimezone(w.timezone(db))
     weekday = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")[
         local.weekday()
     ]
