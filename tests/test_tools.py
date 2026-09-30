@@ -289,6 +289,105 @@ def test_table_query_forms(db, context, query_table, query, indexes):
     assert run["_reads"]["rows"] == {query_table[i]: 1 for i in indexes}
 
 
+@pytest.mark.parametrize(
+    "query,indexes",
+    [
+        ("avg_split=2:17.0", [0, 2]),
+        ("avg_split = 2:17.0", [0, 2]),
+        ("AVG_SPLIT=='2:17.0'", [0, 2]),
+        ("avg_split:2:17.0", [0, 2]),
+        ("time_out=14:10", [0]),
+        ("time_out>=14:00 and returned=false", [0]),
+        ("time_out>=14:00,returned=false", [0]),
+        ("time_out>=14:00&&returned=false", [0]),
+        ("url~https://a.test/x", [0]),
+        ("url=https://a.test/x?ratio=3:1&ok=true", [0]),
+        ("url='https://a.test/x?ratio=3:1&ok=true'", [0]),
+        ("ratio=3:1", [0, 1]),
+        ("ratio!=3:1", [2]),
+        ("title~North: west", [0]),
+        ("title~'North: west'", [0]),
+        ("title='Research: and development'", [2]),
+        ('title="North: west",ratio=3:1', [0]),
+        ("title=a=b!=c>=d<e~f", [1]),
+        ("title='a=b!=c>=d<e~f'", [1]),
+        ("title= 'a=b!=c>=d<e~f'", [1]),
+        ("title~'North:' 'west'", [0]),
+        ("literal=~start:end", [0]),
+        ("literal=ratio:3:1", [1]),
+        ("literal = ratio:3:1", [1]),
+        ("literal = 'ratio:3:1'", [1]),
+        ("'literal'='ratio:3:1'", [1]),
+        ("literal = ':leading'", [2]),
+        ("'North:' 'west'", [0]),
+        ("''", [0, 1, 2]),
+    ],
+)
+def test_table_query_operator_characters(db, context, query, indexes):
+    run, agent = context
+    columns = ["avg_split", "time_out", "returned", "url", "ratio", "title", "literal"]
+    w.create_table(db, "tests", columns, "you")
+    rows = w.add_rows(
+        db,
+        "tests",
+        [
+            dict(zip(columns, values, strict=True))
+            for values in [
+                (
+                    "2:17.0",
+                    "14:10",
+                    False,
+                    "https://a.test/x?ratio=3:1&ok=true",
+                    "3:1",
+                    "North: west",
+                    "~start:end",
+                ),
+                (
+                    "2:18.0",
+                    "13:50",
+                    False,
+                    "https://b.test/x",
+                    "3:1",
+                    "a=b!=c>=d<e~f",
+                    "ratio:3:1",
+                ),
+                (
+                    "2:17.0",
+                    "14:30",
+                    True,
+                    "https://a.test/y",
+                    "3:2",
+                    "Research: and development",
+                    ":leading",
+                ),
+            ]
+        ],
+        "you",
+    )
+    result = tools.run_tool(
+        db, run, agent, "table_read", {"table": "tests", "query": query, "limit": 50}
+    )
+    assert "error" not in result, result
+    assert [row["row"] for row in result["rows"]] == [rows[i] for i in indexes]
+    assert result["total"] == len(indexes)
+    assert "ignored_columns" not in result and "hint" not in result
+
+
+def test_table_query_operator_value_diagnostics(db, context, query_table):
+    run, agent = context
+    result = tools.run_tool(
+        db,
+        run,
+        agent,
+        "table_read",
+        {"table": "items", "query": "missing=2:17.0, title~absent:part", "limit": 50},
+    )
+    assert result["rows"] == [] and result["total"] == 0 and result["table_rows"] == 4
+    assert result["ignored_columns"] == ["missing"]
+    assert tools.QUERY_HINT in result["hint"] and "\n" not in result["hint"]
+    assert not run["_reads"]["rows"]
+
+
 def test_table_query_diagnostics_and_limits(db, context, query_table):
     run, agent = context
 

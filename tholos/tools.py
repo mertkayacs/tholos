@@ -1,4 +1,5 @@
 import operator
+import re
 import shlex
 import sqlite3
 from datetime import UTC, datetime, timedelta
@@ -159,17 +160,24 @@ def _matches(data: dict, conditions: list[tuple[str | None, str, str]]) -> bool:
 def _filter(sheet: dict, query: str | None) -> tuple[list[dict], dict]:
     if not query or query.strip().casefold() in {"", "*", "all"}:
         return sheet["rows"], {}
-    lexer = shlex.shlex(query, posix=True, punctuation_chars="=!<>:~,&")
-    lexer.whitespace_split = True
-    lexer.commenters = ""
-    tokens = list(lexer)
-    ops = set(COMPARE) | {"~"}
+    # Keep operators inside words, and split only unquoted comma and && separators.
+    quoted = r"""'[^']*'|"(?:\\.|[^"\\])*"|\\."""
+    word = rf"""(?:[^\s,'"\\&]|{quoted}|&(?!&))+|&&|,|\S+"""
+    head_pattern = rf"""((?:[^=!<>:~'"\\]|{quoted})*)(==|!=|>=|<=|[=:~<>])(.*)"""
+    tokens, parts = [], []
+    for raw in re.findall(word, query, re.DOTALL):
+        token = shlex.split(raw)[0]
+        head = re.fullmatch(head_pattern, raw, re.DOTALL)
+        tokens.append(token)
+        parts.append(
+            [shlex.split(part)[0] if part else "" for part in head.groups()] if head else [token]
+        )
     separators = {",", "and", "&&"}
     columns = {column.casefold(): column for column in sheet["columns"]}
     conditions = []
     ignored = set()
     hints = []
-    if "," in tokens and not any(token in ops for token in tokens):
+    if "," in tokens and not any(len(part) == 3 for part in parts):
         ignored.update(
             token.casefold() for token in tokens if token != "," and token.casefold() not in columns
         )
@@ -181,13 +189,34 @@ def _filter(sheet: dict, query: str | None) -> tuple[list[dict], dict]:
                 i += 1
                 continue
             column, op = None, "~"
-            if i + 1 < len(tokens) and tokens[i + 1] in ops:
-                column, op = tokens[i].casefold(), tokens[i + 1]
-                i += 2
             words = []
+            head = parts[i]
+            if (
+                len(head) == 1
+                and i + 1 < len(tokens)
+                and len(parts[i + 1]) == 3
+                and parts[i + 1][0] == ""
+            ):
+                head = [tokens[i], *parts[i + 1][1:]]
+                i += 1
+            if len(head) == 3 and head[0]:
+                column, op = head[0].casefold(), head[1]
+                words = [head[2]] if head[2] else []
+                i += 1
             while i < len(tokens):
+                next_head = parts[i][0].casefold()
                 if (words and tokens[i].casefold() in separators) or (
-                    i + 1 < len(tokens) and tokens[i + 1] in ops
+                    (column is None or words)
+                    and (column is None or next_head in columns)
+                    and next_head
+                    and (
+                        len(parts[i]) == 3
+                        or (
+                            i + 1 < len(tokens)
+                            and len(parts[i + 1]) == 3
+                            and parts[i + 1][0] == ""
+                        )
+                    )
                 ):
                     break
                 words.append(tokens[i])
