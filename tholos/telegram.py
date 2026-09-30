@@ -72,6 +72,16 @@ class Poller:
             raise ValueError(f"Telegram {method} failed: {payload.get('description', '?')}")
         return payload["result"]
 
+    def _wake(self) -> None:
+        if self.wake:
+            self.wake()
+
+    async def _tell(self, text: str, **extra) -> dict:
+        return await self.api("sendMessage", chat_id=self.owner, text=text, **extra)
+
+    async def _answer_cb(self, callback: dict, text: str) -> None:
+        await self.api("answerCallbackQuery", callback_query_id=callback["id"], text=text)
+
     async def start(self) -> None:
         row = self.db.execute("SELECT coalesce(max(seq), 0) FROM events").fetchone()
         self.last_seq = row[0]
@@ -128,30 +138,21 @@ class Poller:
             return
         parsed = self.check_callback(callback.get("data", ""))
         if parsed is None:
-            await self.api(
-                "answerCallbackQuery",
-                callback_query_id=callback["id"],
-                text="That button is not valid anymore.",
-            )
+            await self._answer_cb(callback, "That button is not valid anymore.")
             return
         action, approval_id = parsed
         row = self.db.execute(
             "SELECT status FROM approvals WHERE id=?", (approval_id,)
         ).fetchone()
         if not row or row[0] != "pending":
-            await self.api(
-                "answerCallbackQuery",
-                callback_query_id=callback["id"],
-                text="Already decided.",
-            )
+            await self._answer_cb(callback, "Already decided.")
             return
         runner.decide(
             self.db, approval_id, approve=action != "d", always=action == "w"
         )
-        if self.wake:
-            self.wake()
+        self._wake()
         label = {"a": "Approved.", "d": "Denied.", "w": "Always allowed."}[action]
-        await self.api("answerCallbackQuery", callback_query_id=callback["id"], text=label)
+        await self._answer_cb(callback, label)
 
     async def _handle_message(self, message: dict) -> None:
         chat_id = message.get("chat", {}).get("id")
@@ -161,8 +162,7 @@ class Poller:
         reply_to = (message.get("reply_to_message") or {}).get("message_id")
         if reply_to is not None and reply_to in self.question_messages:
             runner.answer(self.db, self.question_messages[reply_to], text)
-            if self.wake:
-                self.wake()
+            self._wake()
             await self.api("sendMessage", chat_id=chat_id, text="Answer sent.")
             return
         agent_name, title = None, text
@@ -183,8 +183,7 @@ class Poller:
                 return
             agent_name = agents[0]["name"]
         w.add_task(self.db, title, to=agent_name, created_by="telegram")
-        if self.wake:
-            self.wake()
+        self._wake()
         await self.api("sendMessage", chat_id=chat_id, text=f"Task added for {agent_name}.")
 
     async def notify(self) -> None:
@@ -196,10 +195,8 @@ class Poller:
                 continue
             self.notified_approvals.add(card["id"])
             if card["kind"] == "question":
-                result = await self.api(
-                    "sendMessage",
-                    chat_id=self.owner,
-                    text=f"{card['agent']} asks: {card['preview']}\n\n"
+                result = await self._tell(
+                    f"{card['agent']} asks: {card['preview']}\n\n"
                     "Reply to this message with your answer.",
                 )
                 self.question_messages[result["message_id"]] = card["id"]
@@ -214,26 +211,18 @@ class Poller:
                         },
                     ]
                 ]
-                await self.api(
-                    "sendMessage",
-                    chat_id=self.owner,
-                    text=f"{card['agent']} wants to run {card['tool']}: {card['preview']}",
+                await self._tell(
+                    f"{card['agent']} wants to run {card['tool']}: {card['preview']}",
                     reply_markup={"inline_keyboard": keyboard},
                 )
         for run in w.list_runs(self.db, status="failed", limit=10):
             if run["id"] not in self.seen_runs:
                 self.seen_runs.add(run["id"])
-                await self.api(
-                    "sendMessage",
-                    chat_id=self.owner,
-                    text=f"Run #{run['id']} for {run['agent']} failed: "
+                await self._tell(
+                    f"Run #{run['id']} for {run['agent']} failed: "
                     f"{run['error'] or 'unknown'}.",
                 )
         for task in w.list_tasks(self.db, status="todo", limit=50):
             if task["agent"] is None and task["id"] not in self.seen_tasks:
                 self.seen_tasks.add(task["id"])
-                await self.api(
-                    "sendMessage",
-                    chat_id=self.owner,
-                    text=f"A task was handed to you: {task['title']}",
-                )
+                await self._tell(f"A task was handed to you: {task['title']}")

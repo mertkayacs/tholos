@@ -125,6 +125,16 @@ def _read_session(secret: str, value: str) -> dict | None:
     return {"csrf": csrf, "authed": authed == "1"}
 
 
+def _set_session_cookie(request: Request, response: Response, session: dict, authed: bool) -> None:
+    response.set_cookie(
+        COOKIE,
+        _session_value(request.app.state.secret, session["csrf"], authed),
+        httponly=True,
+        samesite="strict",
+        secure=request.url.scheme == "https",
+    )
+
+
 async def _csrf_error(request: Request, session: dict) -> str | None:
     host = request.headers.get("host", "")
     source = request.headers.get("origin") or request.headers.get("referer") or ""
@@ -180,19 +190,27 @@ class GuardMiddleware(BaseHTTPMiddleware):
         for key, value in SECURITY_HEADERS.items():
             response.headers.setdefault(key, value)
         if getattr(request.state, "new_session", False):
-            response.set_cookie(
-                COOKIE,
-                _session_value(state.secret, session["csrf"], session["authed"]),
-                httponly=True,
-                samesite="strict",
-                secure=request.url.scheme == "https",
-            )
+            _set_session_cookie(request, response, session, session["authed"])
         return response
 
 
 async def _maybe(value) -> None:
     if inspect.isawaitable(value):
         await value
+
+
+async def _restart_telegram(app: Starlette) -> None:
+    poller = getattr(app.state, "telegram", None)
+    if poller:
+        await _maybe(poller.stop())
+    app.state.telegram = None
+    db = app.state.db
+    token, chat_id = w.get_setting(db, TELEGRAM_TOKEN), w.get_setting(db, TELEGRAM_CHAT)
+    if token and chat_id:
+        from tholos import telegram
+
+        app.state.telegram = telegram.Poller(db, token, chat_id, wake=app.state.worker.wake)
+        await app.state.telegram.start()
 
 
 @asynccontextmanager
@@ -212,13 +230,7 @@ async def lifespan(app: Starlette):
         w.set_setting(db, "access_token", secrets.token_urlsafe(24))
     app.state.worker = worker.Worker(db)
     await _maybe(app.state.worker.start())
-    app.state.telegram = None
-    token, chat_id = w.get_setting(db, TELEGRAM_TOKEN), w.get_setting(db, TELEGRAM_CHAT)
-    if token and chat_id:
-        from tholos import telegram
-
-        app.state.telegram = telegram.Poller(db, token, chat_id, wake=app.state.worker.wake)
-        await app.state.telegram.start()
+    await _restart_telegram(app)
     try:
         yield
     finally:
@@ -247,6 +259,20 @@ templates.env.globals["tool_names"] = sorted(tools.SPECS)
 
 def db_of(request: Request):
     return request.app.state.db
+
+
+def _agent_or_404(request: Request) -> dict:
+    agent = w.get_agent(db_of(request), request.path_params["name"])
+    if agent is None:
+        raise HTTPException(404)
+    return agent
+
+
+def _run_or_404(request: Request) -> dict:
+    run = w.get_run(db_of(request), int(request.path_params["id"]))
+    if run is None:
+        raise HTTPException(404)
+    return run
 
 
 def render(request: Request, template: str, status: int = 200, **ctx) -> Response:
@@ -288,8 +314,6 @@ def board_ctx(db) -> dict:
     follow_ups = [
         r for r in w.list_runs(db, status="queued", limit=50) if r["trigger_kind"] == "follow_up"
     ]
-    for run in follow_ups:
-        run["agent"] = names.get(run["agent_id"], "?")
     running = w.list_runs(db, status="running", limit=50)
     for run in running:
         step = db.execute(
@@ -331,36 +355,25 @@ async def board_lane(request: Request) -> Response:
     return render(request, f"partials/{lane}.html", **board_ctx(db_of(request)))
 
 
+def _board_partial(request: Request, partial: str, message: str) -> Response:
+    return toast(render(request, partial, **board_ctx(db_of(request))), message)
+
+
 async def task_new(request: Request) -> Response:
     db = db_of(request)
     form = await request.form()
     title = str(form.get("title", "")).strip()
     to = str(form.get("to", "")).strip()
     details = str(form.get("details", "")).strip()
-    ctx = board_ctx(db)
     if not title:
-        return toast(render(request, "partials/working.html", **ctx), "Give the task a title.")
+        return _board_partial(request, "partials/working.html", "Give the task a title.")
     w.add_task(db, title, details, to=to if to and to != "you" else None)
     wake(request)
-    return toast(render(request, "partials/working.html", **board_ctx(db)), "Task added.")
+    return _board_partial(request, "partials/working.html", "Task added.")
 
 
 async def team_load(request: Request) -> Response:
-    form = await request.form()
-    name = str(form.get("name", ""))
-    db = db_of(request)
-    try:
-        team = w.load_team(db, name)
-    except (FileNotFoundError, ValueError, KeyError) as exc:
-        return toast(
-            render(request, "partials/working.html", **board_ctx(db)),
-            f"Could not load the team: {exc}",
-        )
-    wake(request)
-    return toast(
-        render(request, "partials/working.html", **board_ctx(db)),
-        f"Loaded the {team.get('name', name)} team.",
-    )
+    return await _load_team(request, "partials/working.html")
 
 
 # Approvals
@@ -375,11 +388,14 @@ def _pending(request: Request, approval_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def _waiting_page(request: Request, message: str) -> Response:
+    return _board_partial(request, "partials/waiting.html", message)
+
+
 async def approval_decide(request: Request) -> Response:
     db = db_of(request)
     approval_id = int(request.path_params["id"])
-    form = await request.form()
-    action = str(form.get("action", ""))
+    action = str((await request.form()).get("action", ""))
     if action not in {"approve", "deny", "always"}:
         raise HTTPException(404)
     if _pending(request, approval_id):
@@ -388,14 +404,13 @@ async def approval_decide(request: Request) -> Response:
         message = {"approve": "Approved.", "deny": "Denied.", "always": "Always allowed."}[action]
     else:
         message = "That approval was already decided."
-    return toast(render(request, "partials/waiting.html", **board_ctx(db)), message)
+    return _waiting_page(request, message)
 
 
 async def approval_answer(request: Request) -> Response:
     db = db_of(request)
     approval_id = int(request.path_params["id"])
-    form = await request.form()
-    text = str(form.get("text", "")).strip()
+    text = str((await request.form()).get("text", "")).strip()
     if not text:
         message = "Add an answer first."
     elif _pending(request, approval_id):
@@ -404,7 +419,7 @@ async def approval_answer(request: Request) -> Response:
         message = "Answer sent."
     else:
         message = "That question was already answered."
-    return toast(render(request, "partials/waiting.html", **board_ctx(db)), message)
+    return _waiting_page(request, message)
 
 
 # Agents
@@ -453,30 +468,29 @@ async def agent_create(request: Request) -> Response:
 
 async def agent_page(request: Request) -> Response:
     db = db_of(request)
-    agent = w.get_agent(db, request.path_params["name"])
-    if agent is None:
-        raise HTTPException(404)
+    agent = _agent_or_404(request)
     return render(
         request,
         "agent.html",
         page="agents",
         memories=w.list_memories(db, agent["id"]),
         runs=w.list_runs(db, agent_id=agent["id"], limit=10),
-        **(_agent_form_ctx(db, agent) | _schedules_ctx(db, agent)),
+        schedules=w.list_schedules(db, agent["id"]),
+        error_id="",
+        values={},
+        **_agent_form_ctx(db, agent),
     )
 
 
 async def agent_update(request: Request) -> Response:
     db = db_of(request)
-    agent = w.get_agent(db, request.path_params["name"])
-    if agent is None:
-        raise HTTPException(404)
+    agent = _agent_or_404(request)
     values = _agent_form_values(await request.form()) | {"name": agent["name"]}
     try:
         w.save_agent(db, agent["id"], **values)
     except ValueError as exc:
         ctx = _agent_form_ctx(db, agent | values, str(exc))
-        return render(request, "partials/agent_form.html", agent=agent | values, **ctx)
+        return render(request, "partials/agent_form.html", **ctx)
     return toast(
         render(
             request,
@@ -487,91 +501,87 @@ async def agent_update(request: Request) -> Response:
     )
 
 
-def _schedules_ctx(db, agent: dict, error: str = "", error_id: str = "", values=None) -> dict:
-    return {
-        "agent": agent,
-        "schedules": w.list_schedules(db, agent["id"]),
-        "error": error,
-        "error_id": str(error_id),
-        "values": values or {},
-    }
+def _schedules_page(
+    request: Request,
+    agent: dict,
+    message: str = "",
+    error: str = "",
+    error_id: str = "",
+    values: dict | None = None,
+) -> Response:
+    db = db_of(request)
+    response = render(
+        request,
+        "partials/schedules.html",
+        agent=agent,
+        schedules=w.list_schedules(db, agent["id"]),
+        error=error,
+        error_id=str(error_id),
+        values=values or {},
+    )
+    return toast(response, message) if message else response
+
+
+def _schedule_form(form) -> tuple[str, str, bool]:
+    return (
+        str(form.get("every", "")).strip(),
+        str(form.get("prompt", "")).strip(),
+        form.get("enabled") == "1",
+    )
 
 
 async def schedule_add(request: Request) -> Response:
     db = db_of(request)
-    agent = w.get_agent(db, request.path_params["name"])
-    if agent is None:
-        raise HTTPException(404)
-    form = await request.form()
-    every, prompt_text = str(form.get("every", "")).strip(), str(form.get("prompt", "")).strip()
-    enabled = form.get("enabled") == "1"
+    agent = _agent_or_404(request)
+    every, prompt_text, enabled = _schedule_form(await request.form())
     try:
         w.save_schedule(db, None, agent["id"], every, prompt_text, enabled)
     except ValueError as exc:
-        ctx = _schedules_ctx(db, agent, str(exc), "add", {"every": every, "prompt": prompt_text})
-        return render(request, "partials/schedules.html", **ctx)
-    return toast(
-        render(request, "partials/schedules.html", **_schedules_ctx(db, agent)), "Schedule saved."
-    )
+        return _schedules_page(
+            request, agent, error=str(exc), error_id="add",
+            values={"every": every, "prompt": prompt_text},
+        )
+    return _schedules_page(request, agent, "Schedule saved.")
 
 
-def _find_schedule(db, schedule_id: int) -> dict | None:
-    return next((s for s in w.list_schedules(db) if s["id"] == schedule_id), None)
+def _schedule_or_404(request: Request) -> dict:
+    db = db_of(request)
+    schedule_id = int(request.path_params["id"])
+    schedule = next((s for s in w.list_schedules(db) if s["id"] == schedule_id), None)
+    if schedule is None:
+        raise HTTPException(404)
+    return schedule
 
 
 async def schedule_edit(request: Request) -> Response:
     db = db_of(request)
-    schedule = _find_schedule(db, int(request.path_params["id"]))
-    if schedule is None:
-        raise HTTPException(404)
+    schedule = _schedule_or_404(request)
     agent = w.get_agent(db, schedule["agent_id"])
-    form = await request.form()
-    every, prompt_text = str(form.get("every", "")).strip(), str(form.get("prompt", "")).strip()
-    enabled = form.get("enabled") == "1"
+    every, prompt_text, enabled = _schedule_form(await request.form())
     try:
         w.save_schedule(db, schedule["id"], agent["id"], every, prompt_text, enabled)
     except ValueError as exc:
-        ctx = _schedules_ctx(db, agent, str(exc), str(schedule["id"]), {})
-        return render(request, "partials/schedules.html", **ctx)
-    return toast(
-        render(request, "partials/schedules.html", **_schedules_ctx(db, agent)), "Schedule saved."
-    )
+        return _schedules_page(request, agent, error=str(exc), error_id=str(schedule["id"]))
+    return _schedules_page(request, agent, "Schedule saved.")
 
 
 async def schedule_delete(request: Request) -> Response:
     db = db_of(request)
-    schedule = _find_schedule(db, int(request.path_params["id"]))
-    if schedule is None:
-        raise HTTPException(404)
+    schedule = _schedule_or_404(request)
     w.delete_schedule(db, schedule["id"])
-    agent = w.get_agent(db, schedule["agent_id"])
-    return toast(
-        render(request, "partials/schedules.html", **_schedules_ctx(db, agent)), "Schedule deleted."
-    )
+    return _schedules_page(request, w.get_agent(db, schedule["agent_id"]), "Schedule deleted.")
 
 
 async def schedule_run(request: Request) -> Response:
     db = db_of(request)
-    schedule = _find_schedule(db, int(request.path_params["id"]))
-    if schedule is None:
-        raise HTTPException(404)
+    schedule = _schedule_or_404(request)
     w.queue_run(db, schedule["agent_id"], prompt.schedule_trigger(schedule["prompt"]), "schedule")
     wake(request)
-    agent = w.get_agent(db, schedule["agent_id"])
-    return toast(
-        render(request, "partials/schedules.html", **_schedules_ctx(db, agent)), "Run queued."
-    )
+    return _schedules_page(request, w.get_agent(db, schedule["agent_id"]), "Run queued.")
 
 
-async def memory_add(request: Request) -> Response:
+def _memories_page(request: Request, agent: dict) -> Response:
     db = db_of(request)
-    agent = w.get_agent(db, request.path_params["name"])
-    if agent is None:
-        raise HTTPException(404)
-    form = await request.form()
-    text = str(form.get("text", "")).strip()
-    if text:
-        w.add_memory(db, agent["id"], text[:200], "you")
     return render(
         request,
         "partials/memories.html",
@@ -580,7 +590,16 @@ async def memory_add(request: Request) -> Response:
     )
 
 
-async def _memory_agent(request: Request) -> tuple[dict | None, dict | None]:
+async def memory_add(request: Request) -> Response:
+    db = db_of(request)
+    agent = _agent_or_404(request)
+    text = str((await request.form()).get("text", "")).strip()
+    if text:
+        w.add_memory(db, agent["id"], text[:200], "you")
+    return _memories_page(request, agent)
+
+
+def _memory_agent(request: Request) -> tuple[dict | None, dict | None]:
     db = db_of(request)
     memory_id = int(request.path_params["id"])
     for agent in w.list_agents(db):
@@ -591,33 +610,21 @@ async def _memory_agent(request: Request) -> tuple[dict | None, dict | None]:
 
 
 async def memory_edit(request: Request) -> Response:
-    db = db_of(request)
-    agent, memory = await _memory_agent(request)
+    agent, memory = _memory_agent(request)
     if memory is None:
         raise HTTPException(404)
     text = str((await request.form()).get("text", "")).strip()
     if text:
-        w.update_memory(db, memory["id"], text[:200])
-    return render(
-        request,
-        "partials/memories.html",
-        agent=agent,
-        memories=w.list_memories(db, agent["id"]),
-    )
+        w.update_memory(db_of(request), memory["id"], text[:200])
+    return _memories_page(request, agent)
 
 
 async def memory_delete(request: Request) -> Response:
-    db = db_of(request)
-    agent, memory = await _memory_agent(request)
+    agent, memory = _memory_agent(request)
     if memory is None:
         raise HTTPException(404)
-    w.delete_memory(db, memory["id"])
-    return render(
-        request,
-        "partials/memories.html",
-        agent=agent,
-        memories=w.list_memories(db, agent["id"]),
-    )
+    w.delete_memory(db_of(request), memory["id"])
+    return _memories_page(request, agent)
 
 
 # Runs
@@ -642,18 +649,13 @@ def _run_ctx(db, run: dict) -> dict:
 
 
 async def run_page(request: Request) -> Response:
-    db = db_of(request)
-    run = w.get_run(db, int(request.path_params["id"]))
-    if run is None:
-        raise HTTPException(404)
-    return render(request, "run.html", page="board", **_run_ctx(db, run))
+    run = _run_or_404(request)
+    return render(request, "run.html", page="board", **_run_ctx(db_of(request), run))
 
 
 async def run_stop(request: Request) -> Response:
     db = db_of(request)
-    run = w.get_run(db, int(request.path_params["id"]))
-    if run is None:
-        raise HTTPException(404)
+    run = _run_or_404(request)
     w.stop_run(db, run["id"])
     wake(request)
     return toast(
@@ -731,12 +733,21 @@ async def table_page(request: Request) -> Response:
     )
 
 
-async def table_grid(request: Request) -> Response:
+def _grid(request: Request, name: str, **extra) -> Response:
     return render(
-        request,
-        "partials/table_grid.html",
-        **_table_ctx(db_of(request), request.path_params["name"]),
+        request, "partials/table_grid.html", **_table_ctx(db_of(request), name) | extra
     )
+
+
+async def table_grid(request: Request) -> Response:
+    return _grid(request, request.path_params["name"])
+
+
+def _int_or(form, key: str, default: int = -1) -> int:
+    try:
+        return int(str(form.get(key, "")))
+    except ValueError:
+        return default
 
 
 async def table_row_add(request: Request) -> Response:
@@ -745,32 +756,25 @@ async def table_row_add(request: Request) -> Response:
     try:
         w.add_rows(db, name, [{}], "you")
     except ValueError as exc:
-        return render(request, "partials/table_grid.html", error=str(exc), **_table_ctx(db, name))
-    return render(request, "partials/table_grid.html", **_table_ctx(db, name))
+        return _grid(request, name, error=str(exc))
+    return _grid(request, name)
 
 
 async def table_cell_edit(request: Request) -> Response:
     db = db_of(request)
     name, row_id = request.path_params["name"], int(request.path_params["row_id"])
     form = await request.form()
-    column = str(form.get("column", ""))
-    value = str(form.get("value", ""))
+    column, value = str(form.get("column", "")), str(form.get("value", ""))
     try:
-        expected = int(str(form.get("expected_version", "")))
-    except ValueError:
-        expected = -1
-    try:
-        w.update_row(db, name, row_id, {column: value}, "you", expected_version=expected)
-    except w.Conflict as exc:
-        return render(
-            request,
-            "partials/table_grid.html",
-            conflict={"value": exc.current["data"].get(column, "")},
-            **_table_ctx(db, name),
+        w.update_row(
+            db, name, row_id, {column: value}, "you",
+            expected_version=_int_or(form, "expected_version"),
         )
+    except w.Conflict as exc:
+        return _grid(request, name, conflict={"value": exc.current["data"].get(column, "")})
     except ValueError as exc:
-        return render(request, "partials/table_grid.html", error=str(exc), **_table_ctx(db, name))
-    return render(request, "partials/table_grid.html", **_table_ctx(db, name))
+        return _grid(request, name, error=str(exc))
+    return _grid(request, name)
 
 
 async def table_row_delete(request: Request) -> Response:
@@ -779,8 +783,8 @@ async def table_row_delete(request: Request) -> Response:
     try:
         w.delete_row(db, name, int(request.path_params["row_id"]), "you")
     except ValueError as exc:
-        return render(request, "partials/table_grid.html", error=str(exc), **_table_ctx(db, name))
-    return render(request, "partials/table_grid.html", **_table_ctx(db, name))
+        return _grid(request, name, error=str(exc))
+    return _grid(request, name)
 
 
 async def table_export(request: Request) -> Response:
@@ -828,21 +832,18 @@ def _note_ctx(db, title: str) -> dict:
     }
 
 
-async def note_page(request: Request) -> Response:
+def _note_render(request: Request, template: str, **extra) -> Response:
     return render(
-        request,
-        "note.html",
-        page="notes",
-        **_note_ctx(db_of(request), request.path_params["title"]),
+        request, template, **_note_ctx(db_of(request), request.path_params["title"]) | extra
     )
+
+
+async def note_page(request: Request) -> Response:
+    return _note_render(request, "note.html", page="notes")
 
 
 async def note_editor(request: Request) -> Response:
-    return render(
-        request,
-        "partials/note_editor.html",
-        **_note_ctx(db_of(request), request.path_params["title"]),
-    )
+    return _note_render(request, "partials/note_editor.html")
 
 
 async def note_save(request: Request) -> Response:
@@ -851,18 +852,12 @@ async def note_save(request: Request) -> Response:
     form = await request.form()
     text = str(form.get("text", ""))
     try:
-        expected = int(str(form.get("expected_version", "")))
-    except ValueError:
-        expected = -1
-    try:
-        w.write_note(db, title, text, "you", "replace", expected)
+        w.write_note(db, title, text, "you", "replace", _int_or(form, "expected_version"))
     except w.Conflict:
         ctx = _note_ctx(db, title)
         ctx["note"] = ctx["note"] | {"body": text}
         return render(request, "partials/note_editor.html", conflict=True, **ctx)
-    return toast(
-        render(request, "partials/note_editor.html", **_note_ctx(db, title)), "Note saved."
-    )
+    return toast(_note_render(request, "partials/note_editor.html"), "Note saved.")
 
 
 # Activity
@@ -884,6 +879,7 @@ async def activity_rows(request: Request) -> Response:
 
 
 def _settings_ctx(db, request: Request, **extra) -> dict:
+    token = w.get_setting(db, TELEGRAM_TOKEN)
     ctx = {
         "models": [
             m | {"api_key_masked": ("····" + m["api_key"][-4:]) if m["api_key"] else ""}
@@ -892,10 +888,8 @@ def _settings_ctx(db, request: Request, **extra) -> dict:
         "rules": w.list_rules(db),
         "teams": TEAMS,
         "telegram": {
-            "configured": bool(w.get_setting(db, TELEGRAM_TOKEN)),
-            "token_masked": ("····" + str(w.get_setting(db, TELEGRAM_TOKEN))[-4:])
-            if w.get_setting(db, TELEGRAM_TOKEN)
-            else "",
+            "configured": bool(token),
+            "token_masked": ("····" + str(token)[-4:]) if token else "",
             "owner_chat_id": w.get_setting(db, TELEGRAM_CHAT) or "",
         },
         "access_token": None if request.app.state.loopback else w.get_setting(db, "access_token"),
@@ -903,6 +897,13 @@ def _settings_ctx(db, request: Request, **extra) -> dict:
         "rule_error": "",
     }
     return ctx | extra
+
+
+def _settings_page(request: Request, partial: str, message: str = "", **extra) -> Response:
+    response = render(
+        request, f"partials/{partial}.html", **_settings_ctx(db_of(request), request, **extra)
+    )
+    return toast(response, message) if message else response
 
 
 async def settings(request: Request) -> Response:
@@ -929,11 +930,10 @@ async def model_save(request: Request) -> Response:
     try:
         values = _model_values(form)
     except ValueError:
-        return render(
+        return _settings_page(
             request,
-            "partials/settings_models.html",
+            "settings_models",
             model_error="Temperature and max tokens must be numbers.",
-            **_settings_ctx(db, request),
         )
     api_key = str(form.get("api_key", "")) or (
         w.get_model(db, model_id)["api_key"] if model_id and w.get_model(db, model_id) else None
@@ -941,25 +941,13 @@ async def model_save(request: Request) -> Response:
     try:
         w.save_model(db, model_id, **values | {"api_key": api_key})
     except ValueError as exc:
-        return render(
-            request,
-            "partials/settings_models.html",
-            model_error=str(exc),
-            **_settings_ctx(db, request),
-        )
-    return toast(
-        render(request, "partials/settings_models.html", **_settings_ctx(db, request)),
-        "Model saved.",
-    )
+        return _settings_page(request, "settings_models", model_error=str(exc))
+    return _settings_page(request, "settings_models", "Model saved.")
 
 
 async def model_delete(request: Request) -> Response:
-    db = db_of(request)
-    w.delete_model(db, int(request.path_params["id"]))
-    return toast(
-        render(request, "partials/settings_models.html", **_settings_ctx(db, request)),
-        "Model deleted.",
-    )
+    w.delete_model(db_of(request), int(request.path_params["id"]))
+    return _settings_page(request, "settings_models", "Model deleted.")
 
 
 async def model_test(request: Request) -> Response:
@@ -982,20 +970,14 @@ async def model_test(request: Request) -> Response:
                 json=payload,
                 headers=headers,
             )
-        elapsed = f"{time.monotonic() - start:.1f}s"
         if response.status_code >= 400:
-            result = {
-                "id": model["id"],
-                "ok": False,
-                "message": f"HTTP {response.status_code}: {response.text[:200]}",
-            }
+            ok, message = False, f"HTTP {response.status_code}: {response.text[:200]}"
         else:
-            result = {"id": model["id"], "ok": True, "message": f"The model replied in {elapsed}."}
+            ok, message = True, f"The model replied in {time.monotonic() - start:.1f}s."
     except httpx.HTTPError as exc:
-        result = {"id": model["id"], "ok": False, "message": str(exc)}
-    return render(
-        request, "partials/settings_models.html", test_result=result, **_settings_ctx(db, request)
-    )
+        ok, message = False, str(exc)
+    result = {"id": model["id"], "ok": ok, "message": message}
+    return _settings_page(request, "settings_models", test_result=result)
 
 
 async def model_detect(request: Request) -> Response:
@@ -1025,41 +1007,32 @@ async def rule_add(request: Request) -> Response:
             str(form.get("match", "")).strip() or "*",
         )
     except ValueError as exc:
-        return render(
-            request,
-            "partials/settings_rules.html",
-            rule_error=str(exc),
-            **_settings_ctx(db, request),
-        )
-    return toast(
-        render(request, "partials/settings_rules.html", **_settings_ctx(db, request)), "Rule saved."
-    )
+        return _settings_page(request, "settings_rules", rule_error=str(exc))
+    return _settings_page(request, "settings_rules", "Rule saved.")
 
 
 async def rule_delete(request: Request) -> Response:
-    db = db_of(request)
-    w.delete_rule(db, int(request.path_params["id"]))
-    return toast(
-        render(request, "partials/settings_rules.html", **_settings_ctx(db, request)),
-        "Rule deleted.",
-    )
+    w.delete_rule(db_of(request), int(request.path_params["id"]))
+    return _settings_page(request, "settings_rules", "Rule deleted.")
 
 
-async def team_load_settings(request: Request) -> Response:
+async def _load_team(request: Request, partial: str) -> Response:
     db = db_of(request)
     name = str((await request.form()).get("name", ""))
     try:
         team = w.load_team(db, name)
     except (FileNotFoundError, ValueError, KeyError) as exc:
-        return toast(
-            render(request, "partials/settings_teams.html", **_settings_ctx(db, request)),
-            f"Could not load the team: {exc}",
-        )
-    wake(request)
-    return toast(
-        render(request, "partials/settings_teams.html", **_settings_ctx(db, request)),
-        f"Loaded the {team.get('name', name)} team.",
-    )
+        message = f"Could not load the team: {exc}"
+    else:
+        wake(request)
+        message = f"Loaded the {team.get('name', name)} team."
+    if partial == "settings_teams":
+        return _settings_page(request, partial, message)
+    return _board_partial(request, partial, message)
+
+
+async def team_load_settings(request: Request) -> Response:
+    return await _load_team(request, "settings_teams")
 
 
 async def telegram_save(request: Request) -> Response:
@@ -1071,21 +1044,8 @@ async def telegram_save(request: Request) -> Response:
         w.set_setting(db, TELEGRAM_TOKEN, token)
     if chat_id:
         w.set_setting(db, TELEGRAM_CHAT, chat_id)
-    if request.app.state.telegram:
-        await _maybe(request.app.state.telegram.stop())
-        request.app.state.telegram = None
-    token, chat_id = w.get_setting(db, TELEGRAM_TOKEN), w.get_setting(db, TELEGRAM_CHAT)
-    if token and chat_id:
-        from tholos import telegram
-
-        request.app.state.telegram = telegram.Poller(
-            db, token, chat_id, wake=request.app.state.worker.wake
-        )
-        await request.app.state.telegram.start()
-    return toast(
-        render(request, "partials/settings_telegram.html", **_settings_ctx(db, request)),
-        "Telegram settings saved.",
-    )
+    await _restart_telegram(request.app)
+    return _settings_page(request, "settings_telegram", "Telegram settings saved.")
 
 
 async def telegram_test(request: Request) -> Response:
@@ -1093,26 +1053,24 @@ async def telegram_test(request: Request) -> Response:
     token, chat_id = w.get_setting(db, TELEGRAM_TOKEN), w.get_setting(db, TELEGRAM_CHAT)
     if not token or not chat_id:
         result = {"ok": False, "message": "Save the bot token and chat id first."}
-    else:
-        try:
-            async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
-                response = await client.post(
-                    f"https://api.telegram.org/bot{token}/sendMessage",
-                    json={"chat_id": chat_id, "text": "Tholos test message."},
-                )
-            data = response.json()
-            if data.get("ok"):
-                result = {"ok": True, "message": "Test message sent."}
-            else:
-                result = {
-                    "ok": False,
-                    "message": data.get("description", f"HTTP {response.status_code}"),
-                }
-        except (httpx.HTTPError, ValueError) as exc:
-            result = {"ok": False, "message": str(exc)}
-    return render(
-        request, "partials/settings_telegram.html", test_result=result, **_settings_ctx(db, request)
-    )
+        return _settings_page(request, "settings_telegram", test_result=result)
+    try:
+        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": "Tholos test message."},
+            )
+        data = response.json()
+        if data.get("ok"):
+            result = {"ok": True, "message": "Test message sent."}
+        else:
+            result = {
+                "ok": False,
+                "message": data.get("description", f"HTTP {response.status_code}"),
+            }
+    except (httpx.HTTPError, ValueError) as exc:
+        result = {"ok": False, "message": str(exc)}
+    return _settings_page(request, "settings_telegram", test_result=result)
 
 
 # Auth and events
@@ -1137,13 +1095,7 @@ async def login(request: Request) -> Response:
         )
     session = request.state.session
     response = RedirectResponse("/", 303)
-    response.set_cookie(
-        COOKIE,
-        _session_value(request.app.state.secret, session["csrf"], True),
-        httponly=True,
-        samesite="strict",
-        secure=request.url.scheme == "https",
-    )
+    _set_session_cookie(request, response, session, True)
     return response
 
 
