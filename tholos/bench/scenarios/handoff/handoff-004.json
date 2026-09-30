@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the planning events to the Coordinator."}}
   ],
   "expect": [
-    {"type": "task", "to": "Coordinator", "title_contains": "venues"},
+    {"type": "task", "to": "Coordinator", "mentions": ["spring fair", "2024-04-20", "120", "summer picnic", "2024-07-15", "60"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

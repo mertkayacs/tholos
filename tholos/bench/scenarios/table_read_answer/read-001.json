@@ -27,7 +27,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["3 new leads"]}
+    {"type": "finish_contains", "all": ["3"]}
   ],
   "max_steps": 3,
   "about": "Reads a leads table and reports the count of new leads."

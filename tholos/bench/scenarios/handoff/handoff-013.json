@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the approved trips to the Booker."}}
   ],
   "expect": [
-    {"type": "task", "to": "Booker", "title_contains": "Book"},
+    {"type": "task", "to": "Booker", "mentions": ["TR1", "Lisbon", "Mira", "TR3", "Seoul", "Lee"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

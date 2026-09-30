@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the accepted features to the Builder."}}
   ],
   "expect": [
-    {"type": "task", "to": "Builder", "title_contains": "Build"},
+    {"type": "task", "to": "Builder", "mentions": ["F1", "dark mode", "42", "F2", "export to pdf", "18"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

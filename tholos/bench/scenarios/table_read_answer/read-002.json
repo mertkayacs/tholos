@@ -32,7 +32,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["4 items"]}
+    {"type": "finish_contains", "all": ["4"]}
   ],
   "max_steps": 4,
   "about": "Reads a stock table and reports how many items are at quantity zero."

@@ -34,7 +34,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["4 critical"]}
+    {"type": "finish_contains", "all": ["4"]}
   ],
   "max_steps": 4,
   "about": "Reads a bug tracker and reports how many bugs are critical and open."

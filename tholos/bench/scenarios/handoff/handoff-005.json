@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the overdue invoices to the Collector."}}
   ],
   "expect": [
-    {"type": "task", "to": "Collector", "title_contains": "overdue"},
+    {"type": "task", "to": "Collector", "mentions": ["INV-40", "Brighton Co", "1250", "INV-42", "Ashgrove", "800"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

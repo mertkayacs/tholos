@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the confirmed volunteers to the Scheduler."}}
   ],
   "expect": [
-    {"type": "task", "to": "Scheduler", "title_contains": "shifts"},
+    {"type": "task", "to": "Scheduler", "mentions": ["Rosa Diaz", "Tessa Lang", "morning"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

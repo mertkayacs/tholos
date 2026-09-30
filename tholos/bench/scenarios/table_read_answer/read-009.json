@@ -27,7 +27,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["O-1002", "O-1004", "O-1007"]}
+    {"type": "finish_contains", "all": ["O-1002", "Kai N", "O-1004", "Dev A", "O-1007", "Anya S"]}
   ],
   "max_steps": 4,
   "about": "Reads an order log and reports which orders are pending."

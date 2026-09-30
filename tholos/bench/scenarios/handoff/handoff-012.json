@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the open tickets to the Responder."}}
   ],
   "expect": [
-    {"type": "task", "to": "Responder", "title_contains": "open tickets"},
+    {"type": "task", "to": "Responder", "mentions": ["T1", "cannot log in", "T3", "feature request"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

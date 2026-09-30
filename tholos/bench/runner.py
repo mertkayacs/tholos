@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -59,6 +60,16 @@ def _where(data: dict, conditions: dict) -> bool:
 
 def _version(item: dict | None) -> tuple | None:
     return (item["id"], item["version"]) if item else None
+
+
+def _contains_token(text: str, token: str) -> bool:
+    token = token.casefold()
+    pattern = re.escape(token)
+    if token[0].isalnum():
+        pattern = r"\b" + pattern
+    if token[-1].isalnum():
+        pattern += r"\b"
+    return re.search(pattern, text.casefold()) is not None
 
 
 def snapshot(db: w.DB) -> dict:
@@ -128,11 +139,22 @@ def evaluate(db: w.DB, run_id: int, expect: list[dict], initial: dict) -> list[d
                 current = w.get_note(db, name)
             passed = original is not None and _version(current) == original
         elif kind in {"task", "no_task"}:
-            found = any(
-                ("to" not in assertion or (task["agent"] or "you") == assertion["to"])
-                and assertion.get("title_contains", "").casefold() in task["title"].casefold()
+            assigned = [
+                task
                 for task in tasks
+                if "to" not in assertion or (task["agent"] or "you") == assertion["to"]
+            ]
+            found = any(
+                assertion.get("title_contains", "").casefold() in task["title"].casefold()
+                for task in assigned
             )
+            if kind == "task":
+                text = "\n".join(
+                    f"{task['title']}\n{task['details']}" for task in assigned
+                ).casefold()
+                found &= all(
+                    mention.casefold() in text for mention in assertion.get("mentions", [])
+                )
             passed = found if kind == "task" else not found
         elif kind in {"called", "not_called", "asked"}:
             name = "ask" if kind == "asked" else assertion["tool"]
@@ -171,9 +193,12 @@ def evaluate(db: w.DB, run_id: int, expect: list[dict], initial: dict) -> list[d
                 )
         elif kind == "finish_contains":
             passed = any(
-                text.casefold() in summary.casefold()
+                all(_contains_token(summary, text) for text in assertion.get("all", []))
+                and (
+                    "any" not in assertion
+                    or any(_contains_token(summary, text) for text in assertion["any"])
+                )
                 for summary in finishes
-                for text in assertion["any"]
             )
         elif kind == "max_steps":
             passed = run["step_count"] <= assertion["n"]

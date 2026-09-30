@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the urgent repairs to the Technician."}}
   ],
   "expect": [
-    {"type": "task", "to": "Technician", "title_contains": "urgent"},
+    {"type": "task", "to": "Technician", "mentions": ["R1", "boiler", "no heat", "R3", "pump", "leaking"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

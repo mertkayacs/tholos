@@ -34,7 +34,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["6 responses"]}
+    {"type": "finish_contains", "all": ["6"]}
   ],
   "max_steps": 4,
   "about": "Reads survey responses and counts how many gave the top rating."

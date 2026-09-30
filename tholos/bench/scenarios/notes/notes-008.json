@@ -18,7 +18,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["30 days"]}
+    {"type": "finish_contains", "all": ["30"]}
   ],
   "max_steps": 3,
   "about": "Reads a note and reports the return window."

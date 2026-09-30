@@ -257,3 +257,89 @@ def test_bench_filter_output(tmp_path, monkeypatch, capsys):
     assert "notes" in capsys.readouterr().out
     with pytest.raises(ValueError, match="No benchmark"):
         b.bench("url", "model", scenarios=str(tmp_path), only="missing")
+
+
+@pytest.mark.parametrize(
+    "created,mentions,expected",
+    [
+        (
+            [("Writer", "New leads", "Willowfield supply at willowfield.example")],
+            ["WILLOWFIELD SUPPLY", "willowfield.example"],
+            True,
+        ),
+        (
+            [
+                ("Writer", "Willowfield supply", "First lead"),
+                ("Writer", "Second lead", "Harbor logistics at harbor.example"),
+            ],
+            ["Willowfield supply", "Harbor logistics", "harbor.example"],
+            True,
+        ),
+        (
+            [("Writer", "New leads", "Willowfield supply")],
+            ["Willowfield supply", "Harbor logistics"],
+            False,
+        ),
+        ([("you", "New leads", "Willowfield supply")], ["Willowfield supply"], False),
+        ([], ["Willowfield supply"], False),
+        (
+            [
+                ("Writer", "New lead", "Willowfield supply"),
+                ("you", "Other lead", "Harbor logistics"),
+            ],
+            ["Willowfield supply", "Harbor logistics"],
+            False,
+        ),
+        ([], [], False),
+        ([("Writer", "Unrestricted task", "Details")], [], True),
+    ],
+)
+def test_task_mentions_use_new_tasks_for_assignee(created, mentions, expected):
+    reference = [
+        {"tool": "task_add", "args": {"to": to, "title": title, "details": details}}
+        for to, title, details in created
+    ] + [{"tool": "finish", "args": {"summary": "Handed off the requested work."}}]
+    assertion = {"type": "task", "to": "Writer"}
+    if mentions:
+        assertion["mentions"] = mentions
+    item = scenario(reference, [assertion])
+    item["workspace"]["tasks"] = [
+        {
+            "title": "Existing Willowfield supply",
+            "to": "Writer",
+            "status": "todo",
+            "details": "Harbor logistics at harbor.example",
+        }
+    ]
+    result = b.run_scenario(item, PROFILE, transport(reference))
+    assert result["passed"] is expected, result["failed_assertions"]
+
+
+@pytest.mark.parametrize(
+    "summary,facts,expected",
+    [
+        ("There are 3 leads with status new.", {"all": ["3"]}, True),
+        ("Found 3, all ready.", {"all": ["3"]}, True),
+        ("Found 30 leads.", {"all": ["3"]}, False),
+        ("Count: 2033.", {"any": ["3"]}, False),
+        ("Mitteco quoted 289.", {"all": ["MITTECO", "289"]}, True),
+        ("Mitteco quoted 299.", {"all": ["Mitteco", "289"]}, False),
+        ("Another vendor quoted 289.", {"all": ["Mitteco", "289"]}, False),
+        ("Mittecompany quoted 2890.", {"any": ["Mitteco", "289"]}, False),
+        ("Confirmed O-1002 and O-1004.", {"all": ["O-1002", "O-1004"]}, True),
+        ("Confirmed O-10020.", {"all": ["O-1002"]}, False),
+        ("Version 1.2+ is ready.", {"all": ["1.2+"]}, True),
+        ("[ready] yes.", {"all": ["[ready]"]}, True),
+        ("{ready} yes.", {"all": ["[ready]"]}, False),
+        ("Price is +3.", {"all": ["+3"]}, True),
+        ("Price is +30.", {"all": ["+3"]}, False),
+        ("3 items are ready.", {"all": ["3"], "any": ["ready", "pending"]}, True),
+        ("3 items are blocked.", {"all": ["3"], "any": ["ready", "pending"]}, False),
+        ("30 items are ready.", {"all": ["3"], "any": ["ready", "pending"]}, False),
+    ],
+)
+def test_finish_facts_match_whole_tokens(summary, facts, expected):
+    reference = [{"tool": "finish", "args": {"summary": summary}}]
+    item = scenario(reference, [{"type": "finish_contains", **facts}])
+    result = b.run_scenario(item, PROFILE, transport(reference))
+    assert result["passed"] is expected, result["failed_assertions"]

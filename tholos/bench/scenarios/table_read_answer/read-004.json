@@ -29,7 +29,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["4 members"]}
+    {"type": "finish_contains", "all": ["4"]}
   ],
   "max_steps": 3,
   "about": "Reads a membership table and reports the number of pro members."

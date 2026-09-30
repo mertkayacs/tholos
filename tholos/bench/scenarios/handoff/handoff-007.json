@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the top candidates to the Interviewer."}}
   ],
   "expect": [
-    {"type": "task", "to": "Interviewer", "title_contains": "Interview"},
+    {"type": "task", "to": "Interviewer", "mentions": ["Mira Chen", "88", "Lena Petrova", "91", "designer"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

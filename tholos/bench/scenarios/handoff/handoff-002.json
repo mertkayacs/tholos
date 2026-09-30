@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the critical bugs to the Fixer."}}
   ],
   "expect": [
-    {"type": "task", "to": "Fixer", "title_contains": "critical"},
+    {"type": "task", "to": "Fixer", "mentions": ["B1", "login loop", "B3", "csv accents"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

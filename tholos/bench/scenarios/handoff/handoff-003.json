@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the restock list to the Buyer."}}
   ],
   "expect": [
-    {"type": "task", "to": "Buyer", "title_contains": "Reorder"},
+    {"type": "task", "to": "Buyer", "mentions": ["A101", "sugar 10kg", "A102", "olive oil 5L"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

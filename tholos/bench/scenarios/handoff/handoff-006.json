@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the wilting plants to the Gardener."}}
   ],
   "expect": [
-    {"type": "task", "to": "Gardener", "title_contains": "wilting"},
+    {"type": "task", "to": "Gardener", "mentions": ["A3", "squash", "B2", "kale"]},
     {"type": "finished"}
   ],
   "max_steps": 5,

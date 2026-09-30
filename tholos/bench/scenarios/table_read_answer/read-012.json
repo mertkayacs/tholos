@@ -29,7 +29,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["quill", "loom", "wren-cli"]}
+    {"type": "finish_contains", "all": ["quill", "loom", "wren-cli"]}
   ],
   "max_steps": 4,
   "about": "Reads a repository table and reports which ones use Rust."

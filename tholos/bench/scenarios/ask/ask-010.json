@@ -4,6 +4,6 @@
   "trigger": {"kind": "task", "from": "you", "title": "Assign the label work", "details": "Send the pottery exhibition label review to a teammate. Ask me which teammate should take it."},
   "respond": {"answer": "Copydesk should proofread the dates and maker names."},
   "reference": [{"tool": "ask", "args": {"question": "Which teammate should review the pottery exhibition labels?"}}, {"tool": "task_add", "args": {"to": "Copydesk", "title": "Proofread pottery labels", "details": "Review the pottery exhibition labels, checking dates and maker names."}}, {"tool": "finish", "args": {"summary": "Assigned the pottery label proofreading to Copydesk."}}],
-  "expect": [{"type": "asked"}, {"type": "task", "to": "Copydesk", "title_contains": "pottery"}, {"type": "called", "tool": "task_add", "args": {"details": {"contains": "maker names"}}}, {"type": "no_task", "to": "Layout"}, {"type": "finished"}],
+  "expect": [{"type": "asked"}, {"type": "task", "to": "Copydesk", "mentions": ["pottery", "labels", "dates", "maker names"]}, {"type": "called", "tool": "task_add", "args": {"details": {"contains": "maker names"}}}, {"type": "no_task", "to": "Layout"}, {"type": "finished"}],
   "max_steps": 5, "about": "Clarifies the assignee and passes along the owner's review requirements."
 }

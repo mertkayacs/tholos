@@ -18,7 +18,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["ridge-wood-42"]}
+    {"type": "finish_contains", "all": ["ridge-wood-42"]}
   ],
   "max_steps": 3,
   "about": "Reads a note and reports the wifi password from it."

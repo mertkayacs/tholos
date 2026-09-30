@@ -20,7 +20,7 @@
   ],
   "expect": [
     {"type": "approval", "tool": "task_add"},
-    {"type": "task", "to": "Writer", "title_contains": "welcome email"},
+    {"type": "task", "to": "Writer", "mentions": ["welcome email", "new members"]},
     {"type": "finished"}
   ],
   "max_steps": 4,

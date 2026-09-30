@@ -29,7 +29,7 @@
   ],
   "expect": [
     {"type": "finished"},
-    {"type": "finish_contains", "any": ["Omar Haddad"]}
+    {"type": "finish_contains", "all": ["Omar Haddad", "Fatima Bello", "Priya Nair", "Amara Diallo"]}
   ],
   "max_steps": 4,
   "about": "Reads a contact list and reports everyone in a given field."

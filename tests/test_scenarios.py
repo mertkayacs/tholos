@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCEN = ROOT / "tholos" / "bench" / "scenarios"
 
@@ -65,7 +67,7 @@ ASSERTIONS = {
     "table_exists": ({"table"}, {"columns"}),
     "note": ({"title"}, {"contains", "not_contains"}),
     "unchanged": (set(), {"table", "note"}),
-    "task": ({"to"}, {"title_contains"}),
+    "task": ({"to"}, {"mentions"}),
     "no_task": (set(), {"to"}),
     "called": ({"tool"}, {"args"}),
     "not_called": ({"tool"}, {"args"}),
@@ -73,7 +75,7 @@ ASSERTIONS = {
     "approval": ({"tool"}, set()),
     "memory": ({"agent", "contains"}, set()),
     "follow_up": ({"min_minutes", "max_minutes"}, set()),
-    "finish_contains": ({"any"}, set()),
+    "finish_contains": (set(), {"all", "any"}),
     "max_steps": ({"n"}, set()),
 }
 
@@ -117,13 +119,14 @@ def validate_assertion(assertion, path):
     assert isinstance(assertion, dict), f"{path} must be an object"
     atype = assertion.get("type")
     assert atype in ASSERTIONS, f"{path} has unknown type {atype!r}"
+    assert "title_contains" not in assertion, f"{path} title_contains is forbidden"
     required, optional = ASSERTIONS[atype]
     keys = set(assertion) - {"type"}
     assert required <= keys, f"{path} ({atype}) missing {required - keys}"
     assert keys <= (required | optional), (
         f"{path} ({atype}) has unknown fields {keys - (required | optional)}"
     )
-    for key in ("table", "title", "note", "to", "agent", "contains", "title_contains"):
+    for key in ("table", "title", "note", "to", "agent", "contains"):
         if key in assertion and not (atype == "note" and key == "contains"):
             assert isinstance(assertion[key], str) and assertion[key], f"{path} bad {key}"
     if atype == "status":
@@ -165,11 +168,17 @@ def validate_assertion(assertion, path):
                 assert is_match(value), f"{path} bad args match"
     if atype == "approval":
         assert assertion["tool"] in TOOLS, f"{path} bad tool"
+    if atype == "task" and "mentions" in assertion:
+        mentions = assertion["mentions"]
+        assert isinstance(mentions, list) and mentions, f"{path} mentions must be nonempty list"
+        assert all(isinstance(text, str) and text.strip() for text in mentions)
     if atype == "finish_contains":
-        assert isinstance(assertion["any"], list) and assertion["any"], (
-            f"{path} any must be nonempty list"
-        )
-        assert all(isinstance(text, str) and text for text in assertion["any"])
+        assert keys & {"all", "any"}, f"{path} needs all or any"
+        for key in keys:
+            assert isinstance(assertion[key], list) and assertion[key], (
+                f"{path} {key} must be nonempty list"
+            )
+            assert all(isinstance(text, str) and text.strip() for text in assertion[key])
     if atype == "max_steps":
         assert isinstance(assertion["n"], int), f"{path} n must be int"
     if atype == "follow_up":
@@ -403,3 +412,39 @@ def test_table_writes_use_known_columns():
             elif tool == "table_create":
                 assert 1 <= len(args["columns"]) <= 12, f"{path} table_create bad column count"
                 created[args["table"]] = {"columns": args["columns"]}
+
+
+@pytest.mark.parametrize(
+    "assertion",
+    [
+        {"type": "task", "to": "Writer", "mentions": ["B1", "login loop"]},
+        {"type": "task", "to": "Writer"},
+        {"type": "finish_contains", "all": ["3"]},
+        {"type": "finish_contains", "any": ["3", "three"]},
+        {"type": "finish_contains", "all": ["3"], "any": ["ready", "pending"]},
+    ],
+)
+def test_fact_assertion_schema_accepts_valid_lists(assertion):
+    validate_assertion(assertion, "local")
+
+
+@pytest.mark.parametrize(
+    "assertion",
+    [
+        {"type": "task", "to": "Writer", "title_contains": "report"},
+        {"type": "task", "to": "Writer", "mentions": []},
+        {"type": "task", "to": "Writer", "mentions": "B1"},
+        {"type": "task", "to": "Writer", "mentions": [3]},
+        {"type": "task", "to": "Writer", "mentions": [" "]},
+        {"type": "finish_contains"},
+        {"type": "finish_contains", "all": []},
+        {"type": "finish_contains", "any": []},
+        {"type": "finish_contains", "all": "3"},
+        {"type": "finish_contains", "any": [3]},
+        {"type": "finish_contains", "all": [" "]},
+        {"type": "finish_contains", "all": ["3"], "any": []},
+    ],
+)
+def test_fact_assertion_schema_rejects_invalid_lists(assertion):
+    with pytest.raises(AssertionError):
+        validate_assertion(assertion, "local")

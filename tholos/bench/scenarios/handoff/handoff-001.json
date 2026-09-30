@@ -23,7 +23,7 @@
     {"tool": "finish", "args": {"summary": "Handed the new leads to the Writer."}}
   ],
   "expect": [
-    {"type": "task", "to": "Writer", "title_contains": "outreach"},
+    {"type": "task", "to": "Writer", "mentions": ["Willowfield supply", "willowfield.example", "Harbor logistics", "harbor.example"]},
     {"type": "finished"}
   ],
   "max_steps": 5,
