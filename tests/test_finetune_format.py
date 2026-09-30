@@ -67,12 +67,12 @@ def runtime_sample():
     return {"messages": result["messages"], "meta": {"template": "test"}}
 
 
-def test_runtime_trajectory_masks_exact_json(runtime_sample):
+def test_runtime_trajectory_masks_exact_json_and_terminators(runtime_sample):
     tokenizer = TinyTokenizer()
     row = finetune.render_sample(runtime_sample, tokenizer)
     assert row is not None
     text = "".join(map(chr, row["input_ids"]))
-    expected = "".join(message["content"] for message in runtime_sample["messages"]
+    expected = "".join(message["content"] + "<|im_end|>" for message in runtime_sample["messages"]
                        if message["role"] == "assistant")
     assert "".join(chr(token) for token in row["labels"] if token != -100) == expected
     assert "<tool_response>\n" in text
@@ -80,11 +80,41 @@ def test_runtime_trajectory_masks_exact_json(runtime_sample):
     assert row["attention_mask"] == [1] * len(row["input_ids"])
     for token, label in zip(row["input_ids"], row["labels"], strict=True):
         assert label == -100 or label == token
-    for marker in ("<s>", "<|im_start|>", "<|im_end|>", "<think>", "</think>"):
+    for marker in ("<s>", "<|im_start|>", "<think>", "</think>"):
         start = 0
         while (start := text.find(marker, start)) != -1:
             assert row["labels"][start:start + len(marker)] == [-100] * len(marker)
             start += len(marker)
+
+
+def test_every_assistant_terminator_is_labeled(runtime_sample):
+    tokenizer = TinyTokenizer()
+    row = finetune.render_sample(runtime_sample, tokenizer)
+    text = "".join(map(chr, row["input_ids"]))
+    for i, message in enumerate(runtime_sample["messages"]):
+        prefix = tokenizer.apply_chat_template(
+            runtime_sample["messages"][:i + 1], tokenize=False, add_generation_prompt=False,
+            enable_thinking=False,
+        )
+        end = len(prefix) - 1
+        start = end - len("<|im_end|>")
+        assert text[start:end + 1] == "<|im_end|>\n"
+        expected = (list(map(ord, "<|im_end|>")) if message["role"] == "assistant"
+                    else [-100] * len("<|im_end|>"))
+        assert row["labels"][start:end] == expected
+        assert row["labels"][end] == -100
+
+
+@pytest.mark.parametrize("replacement", ["", "\n<|im_end|>", "</s>"])
+def test_missing_or_wrong_terminator_fails(runtime_sample, replacement):
+    class WrongTerminatorTokenizer(TinyTokenizer):
+        def apply_chat_template(self, *args, **kwargs):
+            return super().apply_chat_template(*args, **kwargs).replace(
+                "<|im_end|>", replacement
+            )
+
+    with pytest.raises(ValueError, match="assistant turn terminator"):
+        finetune.render_sample(runtime_sample, WrongTerminatorTokenizer())
 
 
 def test_length_limit_drops_whole_samples(runtime_sample):
@@ -144,8 +174,17 @@ def test_private_kernel_metadata():
     assert metadata["code_file"] == "finetune.py"
 
 
-@pytest.mark.parametrize("status", ["completed", "expired", "error"])
-def test_kernel_settings_exports_and_smoke(tmp_path, monkeypatch, runtime_sample, capsys, status):
+@pytest.mark.parametrize("status,stop,eos_token_ids", [
+    ("completed", "turn", [1, 130073]),
+    ("completed", "eos", 1),
+    ("completed", "max_new_tokens", [1, 130073]),
+    ("completed", "turn_at_limit", [1, 130073]),
+    ("expired", "turn", [1, 130073]),
+    ("error", "turn", [1, 130073]),
+])
+def test_kernel_settings_exports_and_smoke(
+    tmp_path, monkeypatch, runtime_sample, capsys, status, stop, eos_token_ids,
+):
     work, source = tmp_path / "working", tmp_path / "input"
     source.mkdir()
     oversized = {"messages": [{"role": "user", "content": "x" * 5000}]}
@@ -177,6 +216,8 @@ def test_kernel_settings_exports_and_smoke(tmp_path, monkeypatch, runtime_sample
             return super().apply_chat_template(*args, **kwargs)
 
         def decode(self, ids, **kwargs):
+            if kwargs["skip_special_tokens"]:
+                ids = [token for token in ids if token not in (1, 130073)]
             return "".join(map(chr, ids))
 
         def save_pretrained(self, path):
@@ -185,10 +226,16 @@ def test_kernel_settings_exports_and_smoke(tmp_path, monkeypatch, runtime_sample
     class Output:
         def __getitem__(self, index):
             assert index == (0, slice(10, None))
-            return list(map(ord, answer))
+            ids = list(map(ord, answer))
+            if stop in ("max_new_tokens", "turn_at_limit"):
+                ids += [ord(" ")] * (512 - len(ids) - (stop == "turn_at_limit"))
+            if stop != "max_new_tokens":
+                ids.append(1 if stop == "eos" else 130073)
+            return ids
 
     class Model:
         device = "cuda"
+        generation_config = SimpleNamespace(eos_token_id=eos_token_ids)
 
         def save_pretrained(self, path, **kwargs):
             calls["adapter"] = (Path(path).name, kwargs)
@@ -288,3 +335,7 @@ def test_kernel_settings_exports_and_smoke(tmp_path, monkeypatch, runtime_sample
     output = capsys.readouterr().out
     assert output.count("MASKED ") == 3
     assert output.count("json_step=True") == (0 if status == "error" else 5)
+    if status != "error":
+        hit_limit = stop == "max_new_tokens"
+        assert output.count(f"ended_on_eos={not hit_limit}") == 5
+        assert output.count(f"hit_max_new_tokens={hit_limit}") == 5

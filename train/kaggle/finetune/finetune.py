@@ -18,7 +18,7 @@ INPUT = Path("/kaggle/input")
 
 
 def render_sample(sample, tokenizer, max_seq_length=MAX_SEQ_LENGTH):
-    """Render runtime messages and label exactly the JSON in each assistant turn."""
+    """Render runtime messages and label each assistant JSON and turn terminator."""
     messages = sample["messages"]
     text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=False, enable_thinking=False
@@ -39,8 +39,12 @@ def render_sample(sample, tokenizer, max_seq_length=MAX_SEQ_LENGTH):
         )
         if not prefix.endswith(RESPONSE_PART) or not text.startswith(prefix + answer):
             raise ValueError("Chat template differs from the runtime assistant prefix")
-        spans.append((len(prefix), len(prefix) + len(answer)))
-        answers.append(answer)
+        end = len(prefix) + len(answer)
+        terminator = text[end:end + len("<|im_end|>")]
+        if terminator != "<|im_end|>":
+            raise ValueError("Chat template differs from the assistant turn terminator")
+        spans.append((len(prefix), end + len(terminator)))
+        answers.append(answer + terminator)
     labels = [
         token if any(start <= left < right <= end for start, end in spans) else -100
         for token, (left, right) in zip(
@@ -53,7 +57,7 @@ def render_sample(sample, tokenizer, max_seq_length=MAX_SEQ_LENGTH):
         clean_up_tokenization_spaces=False,
     )
     if not answers or decoded != "".join(answers):
-        raise ValueError("Token boundaries do not preserve the assistant JSON exactly")
+        raise ValueError("Token boundaries do not preserve the assistant JSON and terminators")
     return {
         "input_ids": encoded["input_ids"],
         "attention_mask": encoded["attention_mask"],
@@ -153,7 +157,7 @@ def main():
             logging_steps=10, seed=42, report_to="none",
         ),
     )
-    # Existing labels keep EOS/newlines and marker-like text in user messages masked.
+    # Existing labels train turn terminators, masking newlines and user marker-like text.
     trainer = train_on_responses_only(
         trainer, instruction_part=INSTRUCTION_PART, response_part=RESPONSE_PART,
         force_match=True, num_proc=1,
@@ -161,7 +165,9 @@ def main():
     for split, masked in (("train", trainer.train_dataset), ("val", trainer.eval_dataset)):
         for original, row in zip(datasets[split], masked, strict=True):
             if row["labels"] != original["labels"]:
-                raise ValueError(f"Unsloth masking changed the JSON-only labels in {split}")
+                raise ValueError(
+                    f"Unsloth masking changed the JSON and terminator labels in {split}"
+                )
     for i in range(3):
         print(f"MASKED {i}: " + tokenizer.decode(
             [token for token in trainer.train_dataset[i]["labels"] if token != -100],
@@ -202,6 +208,9 @@ def main():
         )
         tokenizer.save_pretrained(str(WORK / "merged"))
     FastLanguageModel.for_inference(model)
+    eos_token_ids = model.generation_config.eos_token_id
+    if isinstance(eos_token_ids, int):
+        eos_token_ids = [eos_token_ids]
     for i, sample in enumerate(smoke_samples):
         first = next(j for j, message in enumerate(sample["messages"])
                      if message["role"] == "assistant")
@@ -211,8 +220,11 @@ def main():
         ).to(model.device)
         with torch.inference_mode():
             output = model.generate(**inputs, max_new_tokens=512, do_sample=False)
+        generated = output[0, inputs["input_ids"].shape[1]:]
+        ended_on_eos = int(generated[-1]) in eos_token_ids
+        hit_max_new_tokens = len(generated) == 512 and not ended_on_eos
         text = tokenizer.decode(
-            output[0, inputs["input_ids"].shape[1]:], skip_special_tokens=True,
+            generated, skip_special_tokens=True,
             clean_up_tokenization_spaces=False,
         )
         try:
@@ -220,7 +232,8 @@ def main():
             valid = isinstance(value, dict) and set(value) == {"thought", "tool", "args"}
         except ValueError:
             valid = False
-        print(f"SMOKE {i}: json_step={valid}\n{text}")
+        print(f"SMOKE {i}: json_step={valid} ended_on_eos={ended_on_eos} "
+              f"hit_max_new_tokens={hit_max_new_tokens}\n{text}")
     summary["wall_seconds"] = round(time.monotonic() - started, 2)
     (WORK / "train_summary.json").write_text(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
