@@ -3,7 +3,7 @@
 Usage:
   python train/build.py --rollouts rollouts.jsonl --out-dir /kaggle/working
 
-Keeps a rollout when: it passed, it has zero invalid outputs, no call repeats
+Keeps a rollout when: it passed the semantic audit, it has zero invalid outputs, no call repeats
 back to back, no call appears more than twice, every thought is at most 240
 characters, and it ends with finish. Near-duplicate trajectories inside a
 template are dropped. The val split gets whole templates, about 8 percent of
@@ -46,6 +46,8 @@ def keep(result):
     """Return (ok, reason). Applied to passing rollouts only."""
     if not result.get("passed"):
         return False, "failed assertions"
+    if result.get("semantic_checked") is not True:
+        return False, "missing semantic audit"
     if result.get("invalid_json_count", 0):
         return False, "invalid output"
     parsed = parse_trajectory(result)

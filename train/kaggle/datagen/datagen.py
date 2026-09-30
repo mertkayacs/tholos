@@ -12,6 +12,7 @@
 # and attach those outputs explicitly for the next run.
 # Pilot kernel (tholos-datagen-pilot): N_SCENARIOS=300, DOMAINS_LIMIT=40,
 # PACKS_PER_DOMAIN=2. Set these environment variables or edit the constants.
+# Attach scenarios_kaggle.jsonl to run rollouts only, preserving hosted scenario IDs.
 
 import glob
 import json
@@ -54,14 +55,20 @@ def count_items(path):
 
 def copy_inputs(input_root="/kaggle/input", work=WORK):
     """Restore one coherent output bundle, preferring the most completed rollouts."""
-    names = {"packs.jsonl", "scenarios.jsonl", "scenarios_phrased.jsonl", "rollouts.jsonl"}
+    names = {"packs.jsonl", "scenarios.jsonl", "scenarios_phrased.jsonl", "rollouts.jsonl",
+             "scenarios_kaggle.jsonl"}
     parents = {p.parent for p in Path(input_root).rglob("*.jsonl") if p.name in names}
     if not parents:
         return []
+    # A shard run must not restore rollouts from an unrelated full-pipeline bundle.
+    shard_parents = {p for p in parents if (p / "scenarios_kaggle.jsonl").is_file()}
+    if shard_parents:
+        parents = shard_parents
 
     def rank(directory):
         return tuple(count_items(directory / name)
-                     for name in ("rollouts.jsonl", "scenarios.jsonl", "packs.jsonl"))
+                     for name in ("rollouts.jsonl", "scenarios_kaggle.jsonl",
+                                  "scenarios.jsonl", "packs.jsonl"))
 
     # Mixing stages from different versions can associate saved IDs with changed tasks.
     source = max(sorted(parents), key=rank)
@@ -180,6 +187,8 @@ def main():
     scenarios = f"{WORK}/scenarios.jsonl"
     phrased = f"{WORK}/scenarios_phrased.jsonl"
     rollouts = f"{WORK}/rollouts.jsonl"
+    kaggle_scenarios = f"{WORK}/scenarios_kaggle.jsonl"
+    rollout_only = Path(kaggle_scenarios).is_file()
     common = ["--base-url", BASE_URL, "--model", MODEL, "--deadline", str(deadline),
               "--teacher", TEACHER]
 
@@ -187,38 +196,45 @@ def main():
         result = stage(*args, **kwargs)
         stages.append(result)
         if result["returncode"]:
-            raise RuntimeError(f"stage {result['stage']} failed")
+            if not any(count_items(path) for path in kwargs.get("outputs", ())):
+                raise RuntimeError(f"stage {result['stage']} failed")
+            print(f"stage {result['stage']} failed; continuing with available output", flush=True)
 
     try:
         find_inputs()
         if time.time() < deadline:
             server = start_server()
-        domains = Path(TRAIN) / "domains.txt"
-        limited_domains = Path(WORK) / "domains.txt"
-        domain_lines = [line for line in domains.read_text().splitlines() if line.strip()]
-        if DOMAINS_LIMIT is not None:
-            domain_lines = domain_lines[:DOMAINS_LIMIT]
-        limited_domains.write_text("\n".join(domain_lines) + "\n", encoding="utf-8")
-        run_stage("packs", [f"{TRAIN}/packs.py", *common,
-                            "--domains", str(limited_domains),
-                            "--per-domain", str(PACKS_PER_DOMAIN),
-                            "--workers", str(WORKERS), "--out", packs],
-                  inputs=[limited_domains], outputs=[packs])
-        # Keep persisted scenario IDs stable when new packs arrive on a later run.
-        reuse = count_items(scenarios) > 0
-        if not reuse:
-            Path(scenarios).touch()
-        run_stage("scenarios", [f"{TRAIN}/templates.py", "--packs", packs,
-                                "--n", str(N_SCENARIOS), "--out", scenarios, "--seed", "1"],
-                  inputs=[packs], outputs=[scenarios],
-                  skip=reuse or not count_items(packs) or time.time() >= deadline)
-        run_stage("phrasing", [f"{TRAIN}/phrasing.py", "--scenarios", scenarios, *common,
-                               "--fraction", str(PHRASING_FRACTION), "--seed", "1",
-                               "--workers", str(WORKERS), "--out", phrased],
-                  inputs=[scenarios], outputs=[phrased])
-        run_stage("rollouts", [f"{TRAIN}/rollout.py", "--scenarios", phrased, *common,
+        if rollout_only:
+            rollout_source = kaggle_scenarios
+            print(f"rollout-only input: {rollout_source}", flush=True)
+        else:
+            domains = Path(TRAIN) / "domains.txt"
+            limited_domains = Path(WORK) / "domains.txt"
+            domain_lines = [line for line in domains.read_text().splitlines() if line.strip()]
+            if DOMAINS_LIMIT is not None:
+                domain_lines = domain_lines[:DOMAINS_LIMIT]
+            limited_domains.write_text("\n".join(domain_lines) + "\n", encoding="utf-8")
+            run_stage("packs", [f"{TRAIN}/packs.py", *common,
+                                "--domains", str(limited_domains),
+                                "--per-domain", str(PACKS_PER_DOMAIN),
+                                "--workers", str(WORKERS), "--out", packs],
+                      inputs=[limited_domains], outputs=[packs])
+            # Keep persisted scenario IDs stable when new packs arrive on a later run.
+            reuse = count_items(scenarios) > 0
+            if not reuse:
+                Path(scenarios).touch()
+            run_stage("scenarios", [f"{TRAIN}/templates.py", "--packs", packs,
+                                    "--n", str(N_SCENARIOS), "--out", scenarios, "--seed", "1"],
+                      inputs=[packs], outputs=[scenarios],
+                      skip=reuse or not count_items(packs) or time.time() >= deadline)
+            run_stage("phrasing", [f"{TRAIN}/phrasing.py", "--scenarios", scenarios, *common,
+                                   "--fraction", str(PHRASING_FRACTION), "--seed", "1",
+                                   "--workers", str(WORKERS), "--out", phrased],
+                      inputs=[scenarios], outputs=[phrased])
+            rollout_source = phrased
+        run_stage("rollouts", [f"{TRAIN}/rollout.py", "--scenarios", rollout_source, *common,
                                "--workers", str(WORKERS), "--out", rollouts,
-                               "--temperature", "0.2"], inputs=[phrased], outputs=[rollouts])
+                               "--temperature", "0.2"], inputs=[rollout_source], outputs=[rollouts])
     finally:
         try:
             # Build runs even when the deadline or an earlier stage ends generation.
@@ -238,6 +254,7 @@ def main():
                     server.wait()
             summary = {"wall_seconds": time.time() - KERNEL_STARTED_AT,
                        "deadline": deadline, "restored": restored, "stages": stages,
+                       "rollout_only": rollout_only,
                        "config": {"N_SCENARIOS": N_SCENARIOS,
                                   "PACKS_PER_DOMAIN": PACKS_PER_DOMAIN,
                                   "DOMAINS_LIMIT": DOMAINS_LIMIT,

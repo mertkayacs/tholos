@@ -10,6 +10,22 @@ from random import uniform
 import httpx
 
 
+class UsageLimitError(Exception):
+    """The teacher subscription cannot accept more requests in this lane."""
+
+
+def check_usage_limit(response):
+    if response.status_code < 400:
+        return
+    response.read()
+    text = response.text.casefold()
+    markers = ("usage limit", "usage_limit", "quota", "insufficient balance",
+               "credit balance", "weekly limit", "monthly limit", "daily limit")
+    if response.status_code == 402 or any(marker in text for marker in markers):
+        # Do not include the body: providers can echo credentials in error responses.
+        raise UsageLimitError(f"HTTP {response.status_code}: teacher usage limit reached")
+
+
 class Throttle:
     """Client-side requests-per-minute limiter shared across worker threads."""
 
@@ -71,6 +87,7 @@ def call_with_retries(send, attempts=6):
     for attempt in range(attempts):
         try:
             response = send()
+            check_usage_limit(response)
             if response.status_code == 429 or response.status_code >= 500:
                 raise _Retryable(response)
             return response
@@ -78,13 +95,56 @@ def call_with_retries(send, attempts=6):
             raise
         except _Retryable as exc:
             if attempt == attempts - 1:
+                if exc.response.status_code == 429:
+                    raise UsageLimitError(
+                        "HTTP 429: teacher rate limit persisted after retries") from None
                 exc.response.raise_for_status()
-            time.sleep(backoff_delay(attempt, retry_after(exc.response)))
+            delay = backoff_delay(attempt, retry_after(exc.response))
+            exc.response.close()
+            time.sleep(delay)
         except httpx.TransportError:
             if attempt == attempts - 1:
                 raise
             time.sleep(backoff_delay(attempt))
     raise AssertionError("unreachable")
+
+
+class TeacherTransport(httpx.BaseTransport):
+    """Retry real runtime HTTP calls and expose limits swallowed by the runner."""
+
+    def __init__(self, transport=None, throttle=None, stopped=None):
+        self.transport = transport or httpx.HTTPTransport()
+        self.throttle = throttle
+        self.stopped = stopped if stopped is not None else threading.Event()
+        self.error = None
+
+    def handle_request(self, request):
+        def send():
+            if self.stopped.is_set():
+                raise UsageLimitError("teacher lane stopped after usage limit")
+            if self.throttle is not None:
+                self.throttle.wait()
+            response = self.transport.handle_request(request)
+            response.request = request
+            return response
+
+        try:
+            return call_with_retries(send)
+        except UsageLimitError as exc:
+            self.stopped.set()
+            self.error = exc
+            raise
+
+    def raise_if_limited(self):
+        if self.error is not None:
+            raise self.error
+
+    def close(self):
+        # Each runtime request closes its Client, but workers share this transport.
+        pass
+
+    def __exit__(self, *args):
+        self.transport.close()
 
 
 def post_json(url, payload, headers=None, timeout=180, transport=None):
@@ -122,18 +182,24 @@ def completed(work, items, workers, deadline=None):
         raise ValueError("workers must be positive")
     items = iter(items)
     skipped = object()
+    stopped = threading.Event()
+    reported_limit = False
 
     def start(item):
-        if deadline is not None and time.time() >= deadline:
+        if stopped.is_set() or (deadline is not None and time.time() >= deadline):
             return skipped
-        return work(item)
+        try:
+            return work(item)
+        except UsageLimitError:
+            stopped.set()
+            raise
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
         pending = {}
         exhausted = False
         while pending or not exhausted:
             while not exhausted and len(pending) < workers:
-                if deadline is not None and time.time() >= deadline:
+                if stopped.is_set() or (deadline is not None and time.time() >= deadline):
                     exhausted = True
                     break
                 try:
@@ -147,6 +213,13 @@ def completed(work, items, workers, deadline=None):
             ready, _ = wait(pending, return_when=FIRST_COMPLETED)
             for future in ready:
                 item = pending.pop(future)
-                result = future.result()
+                try:
+                    result = future.result()
+                except UsageLimitError as exc:
+                    if not reported_limit:
+                        print(f"LANE_STOP {exc}", flush=True)
+                        reported_limit = True
+                    exhausted = True
+                    continue
                 if result is not skipped:
                     yield item, result

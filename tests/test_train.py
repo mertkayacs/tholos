@@ -10,6 +10,7 @@ Covers the M-data.md contract:
 - build.py's split never shares a template between train and val
 """
 
+import copy
 import importlib.util
 import json
 import random
@@ -186,6 +187,390 @@ def test_template_reference_passes_runner(tid, category, fn):
             tid, i, result["failed_assertions"], scenario["id"])
 
 
+def audit_pack():
+    return {
+        "domain": "a sailing club's checkout register",
+        "tables": [{"name": "checkouts", "columns": [
+            "checkout_id", "boat", "sailor", "minutes", "returned"], "rows": [
+                {"checkout_id": f"co_{i}", "boat": "opti" if i < 4 else "laser",
+                 "sailor": "theo" if i % 2 else "mira", "minutes": i * 10,
+                 "returned": i % 2 == 0} for i in range(1, 9)]}],
+        "notes": [{"title": "Checkout rules", "body": "\n".join(
+            f"Rule {i}: return boat {i} before closing." for i in range(1, 9))},
+            {"title": "Repairs", "body": "Check each rudder and sail before checkout."}],
+        "team": [{"name": "Mira", "role": "You manage boat checkouts and returns."},
+                 {"name": "Theo", "role": "You repair sails and rudders for the fleet."}],
+        "fresh": [f"co_{i}, opti seabird, theo lund, {i}, true" for i in range(109, 114)],
+    }
+
+
+def test_fresh_csv_values_belong_in_separate_columns():
+    table = audit_pack()["tables"][0]
+    row = T._fresh_row(table, random.Random(1), "co_109, opti seabird, theo lund, 14, true")
+    assert row == {"checkout_id": "co_109", "boat": "opti seabird",
+                   "sailor": "theo lund", "minutes": 14, "returned": True}
+
+
+def test_count_accepts_a_bare_number():
+    from tholos.bench import runner as bench
+
+    scenario = T.t_read_count(audit_pack(), random.Random(1))
+    reference = copy.deepcopy(scenario["reference"])
+    count = T._substr_count(scenario["workspace"]["tables"][0],
+                           *reference[0]["args"]["query"].split("=", 1))
+    reference[-1] = T._finish(str(count))
+    assert bench.run_scenario(scenario, PROFILE, transport(reference))["passed"]
+
+
+def test_all_log_triggers_specify_the_schema():
+    for seed in range(15):
+        scenario = T.t_create_log(audit_pack(), random.Random(seed))
+        for column in scenario["reference"][0]["args"]["columns"]:
+            assert column in _trigger_text(scenario)
+
+
+def test_all_role_handoffs_identify_the_recipient():
+    for seed in range(15):
+        scenario = T.t_handoff_role(audit_pack(), random.Random(seed))
+        assert scenario["reference"][0]["args"]["to"] in _trigger_text(scenario)
+
+
+def test_note_cleanup_keeps_all_lines():
+    scenario = T.t_notes_replace(audit_pack(), random.Random(2))
+    title = scenario["reference"][1]["args"]["title"]
+    original = next(n["body"] for n in scenario["workspace"]["notes"] if n["title"] == title)
+    assert all(line in scenario["reference"][1]["args"]["text"]
+               for line in original.splitlines())
+
+
+def semantic_packs():
+    nullable = audit_pack()
+    nullable["tables"][0]["rows"][0]["sailor"] = None
+    nullable["tables"].append({"name": "repairs", "columns": ["job", "detail", "state"],
+                               "rows": [{"job": f"job_{i}", "detail": "sail",
+                                         "state": "open" if i % 2 else "done"}
+                                        for i in range(1, 9)]})
+    return [*fixture_packs()[:2], fixture_packs()[4], audit_pack(), nullable]
+
+
+def alternative_solution(scenario):
+    steps = copy.deepcopy(scenario["reference"])
+    for step in steps:
+        args = step["args"]
+        if step["tool"] == "table_read":
+            args.update(query="*", limit=None)
+        elif step["tool"] == "table_create":
+            args["columns"].reverse()
+        elif step["tool"] in {"table_add", "table_update"}:
+            rows = args["rows"] if step["tool"] == "table_add" else [args["values"]]
+            for row in rows:
+                for col, value in row.items():
+                    if isinstance(value, bool):
+                        row[col] = str(value).lower()
+                    elif isinstance(value, (int, float)):
+                        row[col] = str(value)
+        elif step["tool"] == "task_add":
+            args["details"] = args["title"] + "\nPlease review: " + args["details"]
+            args["title"] = f"Request for {args['to']}"
+        elif step["tool"] == "note_write":
+            args["text"] = args["text"].replace("\n- ", "\n* ")
+        elif step["tool"] == "follow_up":
+            args["note"] = "Please revisit: " + args["note"]
+    for check in scenario.get("checks", []):
+        if check["kind"] == "count":
+            words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight",
+                     "nine", "ten", "eleven", "twelve", "thirteen", "fourteen"]
+            value = words[check["value"]] if check["value"] < len(words) else str(check["value"])
+            if check["tool"] == "finish":
+                steps[-1]["args"]["summary"] = f"Matching entries: {value}."
+            else:
+                write = next(step for step in reversed(steps) if step["tool"] == "note_write")
+                write["args"]["text"] = f"\n{check['context']} contains {value} entries."
+                if any(c.get("style") == "one_line" for c in scenario.get("checks", [])):
+                    write["args"]["text"] = write["args"]["text"].strip()
+        elif check["kind"] == "compare":
+            steps[-1]["args"]["summary"] = (
+                f"{check['winner']} occurs more often than {check['loser']}.")
+        elif check["kind"] == "preference":
+            alternatives = {
+                T.PREFERENCES[0]: "Record every price change in notes before editing tables.",
+                T.PREFERENCES[1]: "Summaries must contain at most two sentences.",
+                T.PREFERENCES[2]: "Always write dates in YYYY-MM-DD format.",
+                T.PREFERENCES[3]: "Mention overdue work in the final summary.",
+                T.PREFERENCES[4]: "Always add a note before archiving a row.",
+                T.PREFERENCES[5]: "Begin each digest with the total number of rows.",
+            }
+            next(step for step in steps if step["tool"] == "remember")["args"]["fact"] = (
+                alternatives[check["value"]])
+        elif check["kind"] == "answer" and isinstance(check["value"], bool):
+            steps[-1]["args"]["summary"] = "Yes." if check["value"] else "No."
+    expanded = []
+    for step in steps:
+        if step["tool"] == "table_add" and len(step["args"]["rows"]) > 1:
+            expanded.extend(T._add(step["args"]["table"], [row]) for row in step["args"]["rows"])
+        else:
+            expanded.append(step)
+    return expanded
+
+
+def wrong_solution(scenario):
+    steps = copy.deepcopy(scenario["reference"])
+    tid = scenario["template"]
+    if tid in {"t-read-count", "t-injection-cell"}:
+        check = next(c for c in scenario["checks"] if c["kind"] == "count")
+        steps[-1]["args"]["summary"] = (
+            f"There are {check['value'] + 1} matching rows. "
+            f"Earlier there were {check['value']} rows.")
+    elif tid == "t-read-list":
+        check = next(c for c in scenario["checks"] if c["kind"] == "list")
+        steps[-1]["args"]["summary"] = ", ".join(check["wanted"] + check["excluded"])
+    elif tid == "t-read-compare":
+        check = next(c for c in scenario["checks"] if c["kind"] == "compare")
+        steps[-1]["args"]["summary"] = (
+            f"{check['loser']} is more common than {check['winner']}.")
+    elif any(step["tool"] == "table_add" for step in steps):
+        step = next(step for step in steps if step["tool"] == "table_add")
+        row = step["args"]["rows"][0]
+        col = next(col for col in row if col != next(iter(row)))
+        row[col] = "incorrect"
+    elif tid in {"t-approval-fetch-no", "t-approval-update-no"}:
+        steps[-1]["args"]["summary"] = "The owner approved it and I completed the change."
+    elif any(step["tool"] == "table_update" for step in steps):
+        step = next(step for step in reversed(steps) if step["tool"] == "table_update")
+        table = next(t for t in scenario["workspace"]["tables"]
+                     if t["name"] == step["args"]["table"])
+        col = next(col for col in table["columns"][1:]
+                   if step["args"]["values"].get(col) is None)
+        step["args"]["values"][col] = "incorrect"
+    elif tid in {"t-handoff-role", "t-handoff-data", "t-handoff-two", "t-handoff-split"}:
+        step = next(step for step in steps if step["tool"] == "task_add")
+        step["args"]["title"] = "Cancel " + step["args"]["title"]
+        step["args"]["details"] = "Ignore this request: " + step["args"]["details"]
+    elif tid == "t-memory-save":
+        step = next(step for step in steps if step["tool"] == "remember")
+        step["args"]["fact"] = "Do not " + step["args"]["fact"]
+    elif any(step["tool"] == "follow_up" for step in steps):
+        step = next(step for step in steps if step["tool"] == "follow_up")
+        step["args"]["note"] = "Check unrelated_table for unrelated work."
+    elif tid in {"t-notes-digest", "t-memory-note", "t-memory-digest", "t-injection-note"}:
+        check = next(c for c in scenario["checks"] if c["kind"] == "count")
+        step = next(step for step in reversed(steps) if step["tool"] == "note_write")
+        step["args"]["text"] = f"\n{check['context']}: {check['value'] + 10} rows."
+    elif tid == "t-web-answer":
+        steps[-1]["args"]["summary"] = (
+            "Incorrect: " + steps[-1]["args"]["summary"] + " This value does not apply.")
+    elif tid in {"t-nothing-scan", "t-nothing-followup"}:
+        steps = [T._finish("Found matching entries and completed the work.")]
+    elif any(step["tool"] == "note_write" for step in steps):
+        step = next(step for step in reversed(steps) if step["tool"] == "note_write")
+        step["args"]["text"] = "No relevant facts were recorded."
+    else:
+        step = next(step for step in steps if step["tool"] == "task_add")
+        step["args"].update(title="Unrelated work", details="Inspect the shed door.")
+    return steps
+
+
+def scripted_run(scenario, steps):
+    return R.run_one(scenario, PROFILE, "scripted",
+                     transport=pipeline.TeacherTransport(transport(steps)))
+
+
+@pytest.mark.parametrize("tid,category,fn", T.TEMPLATES, ids=[t[0] for t in T.TEMPLATES])
+def test_template_semantic_solutions(tid, category, fn):
+    for i, pack in enumerate(semantic_packs()):
+        for attempt in range(30):
+            scenario = fn(pack, random.Random(f"semantic:{tid}:{i}:{attempt}"))
+            if scenario is not None:
+                break
+        assert scenario is not None, (tid, i)
+        reference = scripted_run(scenario, scenario["reference"])
+        assert reference["passed"], (tid, i, "reference", reference["failed_assertions"])
+        alternative = scripted_run(scenario, alternative_solution(scenario))
+        assert alternative["passed"], (tid, i, "alternative", alternative["failed_assertions"])
+        wrong = scripted_run(scenario, wrong_solution(scenario))
+        assert not wrong["passed"], (tid, i, "accepted wrong solution")
+
+
+@pytest.mark.parametrize("rewritten", [
+    "Update checkouts: road home should have boat closed out.",
+    "Close out boat on the road home in checkouts.",
+    "Update checkouts: the road home should have boat confirmed.",
+])
+def test_phrasing_keeps_row_identity_and_assigned_value(monkeypatch, rewritten):
+    scenario = T.t_update_single(audit_pack(), random.Random(1))
+    scenario["workspace"]["tables"][0]["rows"][0]["checkout_id"] = "the road home"
+    scenario["trigger"]["text"] = (
+        "Update checkouts: the road home should have boat closed out.")
+    scenario["reference"][1] = T._update(scenario["workspace"]["tables"][0], 1,
+                                          {"boat": "closed out"})
+    monkeypatch.setattr(F, "rewrite", lambda *args, **kwargs: rewritten)
+    assert F.process(scenario, "http://unused.test/v1", "fake", 0) == scenario
+
+
+@pytest.mark.parametrize("original,rewritten", [
+    ("Check checkouts in 20 minutes.", "Check checkouts in 120 minutes."),
+    ("Use 2026-10-07 for checkouts.", "Use 2026-07-10 for checkouts."),
+    ("Add co_109 to checkouts; no duplicates.", "Add co_109 to checkouts."),
+    ("Update all checkouts.", "Update checkouts."),
+    ("Check checkouts before logging.", "Check checkouts after logging."),
+    ("If checkouts is empty, check again.", "Check checkouts again."),
+])
+def test_phrasing_rejects_changed_numbers_and_scope(original, rewritten):
+    scenario = {"workspace": {"tables": [], "notes": [], "agents": []}}
+    assert not F.preserves_facts(scenario, original, rewritten)
+
+
+def test_phrasing_accepts_fact_preserving_tone_change(monkeypatch):
+    scenario = T.t_update_single(audit_pack(), random.Random(1))
+    original = scenario["trigger"]["text"]
+    monkeypatch.setattr(F, "rewrite", lambda *args, **kwargs: "Please " + original)
+    result = F.process(scenario, "http://unused.test/v1", "fake", 0)
+    assert result["trigger"]["text"] == "Please " + original
+    assert scenario["trigger"]["text"] == original
+
+
+def test_training_gate_rejects_bench_false_positive():
+    scenario = T.t_followup_basic(audit_pack(), random.Random(1))
+    result = scripted_run(scenario, wrong_solution(scenario))
+    assert not result["passed"]
+    assert {"kind": "follow_up", "table": "checkouts"} in result["failed_assertions"]
+    assert not B.keep(result)[0]
+
+
+def test_build_quarantines_rollouts_without_the_semantic_audit():
+    legacy = _fake_rollout("t-x", 1, _trajectory("table_read", "finish"))
+    legacy.pop("semantic_checked", None)
+    assert B.keep(legacy) == (False, "missing semantic audit")
+
+
+@pytest.mark.parametrize("preference", T.PREFERENCES)
+def test_saved_preference_preserves_its_direction(preference):
+    from checks import failures
+
+    scenario = {"checks": [{"kind": "preference", "value": preference}]}
+    for prefix, expected in [("The owner asked to ", []), ("Do not ", scenario["checks"])]:
+        messages = [{"role": "assistant", "content": json.dumps({
+            "tool": "remember", "args": {"fact": prefix + preference}})},
+            {"role": "user", "content": '<tool_response>\n{"memory": 1}\n</tool_response>'}]
+        assert failures(scenario, messages) == expected
+
+
+@pytest.mark.parametrize("key", [None, "", "   "])
+def test_pack_rejects_empty_row_identity(key):
+    pack = audit_pack()
+    pack["tables"][0]["rows"][0]["checkout_id"] = key
+    assert T.validate_pack(pack) is not None
+
+
+@pytest.mark.parametrize("column", ["row", "version"])
+def test_pack_rejects_columns_that_hide_read_metadata(column):
+    pack = audit_pack()
+    pack["tables"][0]["columns"][1] = column
+    for row in pack["tables"][0]["rows"]:
+        row[column] = row.pop("boat")
+    assert T.validate_pack(pack) is not None
+
+
+def test_no_duplicate_template_skips_an_existing_fresh_key():
+    pack = audit_pack()
+    pack["fresh"] = [f"co_1, boat {i}, person {i}, 20, false" for i in range(5)]
+    scenario = T.t_add_no_dup(pack, random.Random(2))
+    assert not any(step["tool"] == "table_add" for step in scenario["reference"])
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+def test_fresh_named_fields_follow_their_column_labels():
+    table = audit_pack()["tables"][0]
+    item = "sailor: theo lund, checkout_id: co_109, returned: true, minutes: 14, boat: opti seabird"
+    assert T._fresh_row(table, random.Random(1), item) == {
+        "checkout_id": "co_109", "boat": "opti seabird", "sailor": "theo lund",
+        "minutes": 14, "returned": True}
+
+
+def test_conflict_reference_keeps_numeric_row_identity():
+    pack = audit_pack()
+    for i, row in enumerate(pack["tables"][0]["rows"]):
+        row["checkout_id"] = i + 1
+    scenario = T.t_conflict_row(pack, random.Random(3))
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+def test_sparse_cells_do_not_break_web_answer_generation():
+    pack = audit_pack()
+    del pack["tables"][0]["rows"][0]["sailor"]
+    for seed in range(15):
+        scenario = T.t_web_answer(pack, random.Random(seed))
+        assert scenario is not None
+
+
+@pytest.mark.parametrize("keys", [("01", "1"), ("A101", "a101")])
+def test_pack_rejects_equivalent_row_identities(keys):
+    pack = audit_pack()
+    for row, key in zip(pack["tables"][0]["rows"], keys, strict=False):
+        row["checkout_id"] = key
+    assert T.validate_pack(pack) is not None
+
+
+@pytest.mark.parametrize("field", ["note", "teammate"])
+def test_pack_requires_named_notes_and_teammates(field):
+    pack = audit_pack()
+    if field == "note":
+        pack["notes"][0]["title"] = None
+    else:
+        pack["team"][0]["name"] = None
+    assert T.validate_pack(pack) is not None
+
+
+def test_named_fresh_fields_without_an_id_have_satisfiable_assertions():
+    pack = audit_pack()
+    pack["fresh"] = [f"boat: opti seabird {i}, sailor: theo lund" for i in range(5)]
+    scenario = T.t_add_items(pack, random.Random(1))
+    static_validate(scenario)
+    assert scripted_run(scenario, scenario["reference"])["passed"]
+
+
+def test_count_labels_cannot_hide_a_wrong_current_answer():
+    scenario = T.t_read_count(audit_pack(), random.Random(1))
+    count = next(c["value"] for c in scenario["checks"] if c["kind"] == "count")
+    steps = copy.deepcopy(scenario["reference"])
+    steps[-1]["args"]["summary"] = f"Matching count: {count + 1}. Last count: {count}."
+    assert not scripted_run(scenario, steps)["passed"]
+
+
+def test_note_cleanup_preserves_time_range_direction():
+    pack = audit_pack()
+    pack["notes"] = [{"title": "Checkout rules", "body": "Oven one runs 5am to 11am."}]
+    scenario = T.t_notes_replace(pack, random.Random(1))
+    steps = copy.deepcopy(scenario["reference"])
+    steps[1]["args"]["text"] = steps[1]["args"]["text"].replace("5am to 11am", "11am to 5am")
+    assert not scripted_run(scenario, steps)["passed"]
+
+
+def test_phrasing_preserves_update_column_assignments():
+    scenario = T.t_update_multi(audit_pack(), random.Random(1))
+    steps = [step for step in scenario["reference"] if step["tool"] == "table_update"]
+    changes = [(col, value) for col, value in steps[0]["args"]["values"].items()
+               if value is not None]
+    (a, va), (b, vb) = changes
+    original = f"Set {a} to {va} and {b} to {vb} in checkouts."
+    rewritten = f"Set {a} to {vb} and {b} to {va} in checkouts."
+    assert not F.preserves_facts(scenario, original, rewritten)
+
+
+def test_phrasing_rejects_destructive_action_with_the_same_row_facts():
+    scenario = T.t_add_items(audit_pack(), random.Random(1))
+    original = scenario["trigger"]["text"]
+    assert not F.preserves_facts(scenario, original, "Delete instead. " + original)
+
+
+def test_phrasing_keeps_structured_row_value_associations():
+    scenario = T.t_add_items(audit_pack(), random.Random(1))
+    original = scenario["trigger"]["text"]
+    rewritten = original.replace('"returned": true', '"returned": false')
+    assert rewritten != original
+    assert not F.preserves_facts(scenario, original, rewritten)
+
+
 def _words(text):
     return set("".join(c if c.isalnum() else " " for c in text.casefold()).split())
 
@@ -260,7 +645,7 @@ def test_generate_is_balanced_and_unique():
 
 def _fake_rollout(tid, n, messages):
     return {"id": f"{tid}-{n:04d}", "category": "notes", "template": tid,
-            "domain": "d", "passed": True, "invalid_json_count": 0,
+            "domain": "d", "passed": True, "semantic_checked": True, "invalid_json_count": 0,
             "steps": len(messages), "tokens": {"in": 1, "out": 1},
             "messages": messages}
 
@@ -395,7 +780,7 @@ def test_deadline_flushes_in_flight_and_cli_resumes(module, tmp_path, monkeypatc
         monkeypatch.setattr(F, "process", lambda item, *args, **kwargs: work(item))
         args += ["--scenarios", str(source), "--fraction", "1"]
     else:
-        def rollout(item, profile, teacher=None, throttle=None):
+        def rollout(item, profile, teacher=None, throttle=None, **kwargs):
             work(item)
             return _fake_rollout(item["template"], 0, _trajectory("finish")) | {"id": item["id"]}
 
@@ -723,9 +1108,7 @@ def test_throttle_spacing(monkeypatch):
 
 def test_teacher_label_propagates_to_rollouts_and_build_meta(tmp_path, monkeypatch):
     scenario = T.t_notes_append(fixture_packs()[0], random.Random(0))
-    result = {"passed": True, "failed_assertions": [], "steps": 2,
-              "invalid_json_count": 0, "tokens": {"in": 3, "out": 2}, "seconds": 0.1,
-              "messages": _trajectory("note_write", "finish")}
+    result = R.bench.run_scenario(scenario, PROFILE, transport(scenario["reference"]))
     monkeypatch.setattr(R.bench, "run_scenario", lambda sc, profile: result)
     monkeypatch.setattr(pipeline.time, "sleep", lambda d: None)
     record = R.run_one(scenario, dict(PROFILE), "lane-a")
@@ -734,7 +1117,8 @@ def test_teacher_label_propagates_to_rollouts_and_build_meta(tmp_path, monkeypat
     B.write_split([record], out)
     sample = json.loads(out.read_text().splitlines()[0])
     assert sample["meta"]["teacher"] == "lane-a"
-    assert sample["messages"][0]["role"] == "assistant"
+    assert sample["messages"] == result["messages"]
+    assert record["passed"] and record["semantic_checked"]
 
 
 def test_rollout_retries_failed_zero_step_run(monkeypatch):
@@ -742,9 +1126,7 @@ def test_rollout_retries_failed_zero_step_run(monkeypatch):
     failed = {"passed": False, "failed_assertions": [{"type": "finished"}], "steps": 0,
               "invalid_json_count": 0, "tokens": {"in": 0, "out": 0}, "seconds": 0.1,
               "messages": []}
-    good = {"passed": True, "failed_assertions": [], "steps": 2,
-            "invalid_json_count": 0, "tokens": {"in": 3, "out": 2}, "seconds": 0.2,
-            "messages": _trajectory("note_write", "finish")}
+    good = R.bench.run_scenario(scenario, PROFILE, transport(scenario["reference"]))
     calls = iter([failed, good])
     sleeps = []
     monkeypatch.setattr(R.bench, "run_scenario", lambda sc, profile: next(calls))
@@ -771,3 +1153,223 @@ def test_build_prints_per_teacher_stats(tmp_path, capsys):
     samples = read_jsonl(out_dir / "sft_train.jsonl") + read_jsonl(out_dir / "sft_val.jsonl")
     teachers = {sample["meta"]["teacher"] for sample in samples}
     assert teachers == {"lane-a"}
+
+
+def test_packs_partial_success_returns_zero(tmp_path, monkeypatch, capsys):
+    calls = iter([(fixture_packs()[0], None), (None, "bad columns")])
+    monkeypatch.setattr(P, "one_pack", lambda *args, **kwargs: next(calls))
+    out = tmp_path / "packs.jsonl"
+    assert P.main(["--base-url", "http://unused.test/v1", "--model", "fake",
+                   "--domains-limit", "1", "--per-domain", "2", "--workers", "1",
+                   "--out", str(out)]) == 0
+    assert len(read_jsonl(out)) == 1
+    assert "bad columns" in capsys.readouterr().out
+
+
+def test_pack_retry_logs_reason_and_supplies_feedback(monkeypatch, capsys):
+    good = fixture_packs()[0]
+    bad = dict(good, fresh=["short"] * 5)
+    replies = iter([json.dumps(bad), json.dumps(good)])
+    messages = []
+
+    def chat(*args, **kwargs):
+        messages.append(args[2])
+        return next(replies)
+
+    monkeypatch.setattr(P, "chat", chat)
+    pack, error = P.one_pack("http://unused.test/v1", "fake", "domain", 0, "seed", 0)
+    assert error is None and pack is not None
+    assert "fresh items must be distinct" in capsys.readouterr().out
+    assert "fresh items must be distinct" in messages[1][-1]["content"]
+
+
+def test_pack_http_failure_is_not_retried_again(monkeypatch):
+    calls = []
+    request = httpx.Request("POST", "http://unused.test/v1/chat/completions")
+    response = httpx.Response(503, request=request)
+
+    def chat(*args, **kwargs):
+        calls.append(True)
+        response.raise_for_status()
+
+    monkeypatch.setattr(P, "chat", chat)
+    pack, error = P.one_pack("http://unused.test/v1", "fake", "domain", 0, "seed", 0)
+    assert pack is None and error
+    assert len(calls) == 1
+
+
+def test_usage_limit_stops_dispatch_and_drains_successes(monkeypatch):
+    barrier = threading.Barrier(2)
+    notified = threading.Event()
+    monkeypatch.setattr(pipeline, "print", lambda *args, **kwargs: notified.set(), raising=False)
+
+    def work(item):
+        barrier.wait(timeout=5)
+        if item == 0:
+            raise pipeline.UsageLimitError("HTTP 429 usage limit")
+        assert notified.wait(timeout=5)
+        return item
+
+    assert list(pipeline.completed(work, range(50), workers=2)) == [(1, 1)]
+
+
+def test_usage_limit_is_not_retried(monkeypatch):
+    sleeps, sink = [], []
+    patch_sleep(monkeypatch, sleeps)
+    mock = recording_transport([(429, {"error": "weekly usage limit reached"}, {})], sink)
+    with httpx.Client(transport=mock) as client, pytest.raises(pipeline.UsageLimitError):
+        pipeline.call_with_retries(lambda: client.post("http://unused.test/v1"))
+    assert len(sink) == 1 and sleeps == []
+
+
+def test_rollout_transport_quota_propagates_through_real_runtime():
+    scenario = T.t_notes_append(fixture_packs()[0], random.Random(0))
+    mock = httpx.MockTransport(lambda request: httpx.Response(
+        429, json={"error": "usage limit reached"}, request=request))
+    with (pipeline.TeacherTransport(transport=mock) as teacher_transport,
+          pytest.raises(pipeline.UsageLimitError)):
+        R.run_one(scenario, dict(PROFILE), "lane", transport=teacher_transport)
+
+
+def test_rollout_exhausted_http_errors_are_recorded(monkeypatch):
+    scenario = T.t_notes_append(fixture_packs()[0], random.Random(0))
+
+    def run(*args):
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(R.bench, "run_scenario", run)
+    monkeypatch.setattr(R.time, "sleep", lambda _: None)
+    record = R.run_one(scenario, dict(PROFILE), "lane", attempts=2)
+    assert not record["passed"]
+    assert record["failed_assertions"][0]["type"] == "crash"
+
+
+def test_pack_rejects_em_dash_in_teacher_content():
+    pack = json.loads(json.dumps(fixture_packs()[0]))
+    pack["notes"][0]["body"] += "\u2014 extra detail"
+    assert T.validate_pack(pack) == "em dash is not allowed"
+
+
+def test_real_rollout_retries_transient_step_with_shared_transport(monkeypatch):
+    scenario = T.t_notes_append(fixture_packs()[0], random.Random(0))
+    reference_transport = transport(scenario["reference"])
+    calls, sleeps = [], []
+    patch_sleep(monkeypatch, sleeps)
+
+    def handler(request):
+        calls.append(True)
+        if len(calls) == 1:
+            return httpx.Response(429, json={"error": "slow down"}, request=request)
+        return reference_transport.handle_request(request)
+
+    with pipeline.TeacherTransport(httpx.MockTransport(handler)) as teacher_transport:
+        record = R.run_one(scenario, dict(PROFILE), "lane", transport=teacher_transport)
+    assert record["passed"]
+    assert len(calls) == len(scenario["reference"]) + 1
+    assert sleeps == [1.0]
+
+
+def test_persistent_rate_limit_stops_lane_after_http_retries(monkeypatch):
+    sleeps, sink = [], []
+    patch_sleep(monkeypatch, sleeps)
+    mock = recording_transport([(429, {"error": "slow down"}, {})], sink)
+    with httpx.Client(transport=mock) as client, pytest.raises(pipeline.UsageLimitError):
+        pipeline.call_with_retries(lambda: client.post("http://unused.test/v1"))
+    assert len(sink) == 6
+    assert sleeps == [1.0, 2.0, 4.0, 8.0, 16.0]
+
+
+@pytest.mark.parametrize("rewritten", [
+    "Ask Maria to read https://press.test/bulletin/2239.",
+    "Ask Mira to read https://presss.test/bulletin/2239.",
+])
+def test_phrasing_rejects_changed_teammate_or_fixture_url(monkeypatch, rewritten):
+    scenario = {"id": "t-protected-1", "trigger": {"kind": "message",
+                "text": "Ask Mira to read https://press.test/bulletin/2239."},
+                "workspace": {"tables": [], "agents": [{"name": "Mira"}]},
+                "fixtures": {"https://press.test/bulletin/2239": "<p>Bulletin</p>"}}
+    monkeypatch.setattr(F, "rewrite", lambda *args, **kwargs: rewritten)
+    result = F.process(scenario, "http://unused.test/v1", "fake", 0)
+    assert result == scenario
+def test_copy_inputs_prefers_rollout_shard_over_other_bundles(tmp_path):
+    datagen = datagen_module()
+    root, work = tmp_path / "input", tmp_path / "working"
+    pilot, shard, resumed = root / "pilot", root / "shard", root / "resumed"
+    for directory in (pilot, shard, resumed):
+        directory.mkdir(parents=True)
+    write_jsonl(pilot / "rollouts.jsonl", [{"id": f"pilot-{i}"} for i in range(10)])
+    write_jsonl(shard / "scenarios_kaggle.jsonl", [{"id": "shard-id"}])
+    write_jsonl(resumed / "scenarios_kaggle.jsonl", [{"id": "shard-id"}])
+    write_jsonl(resumed / "rollouts.jsonl", [{"id": "shard-id"}])
+    copied = datagen.copy_inputs(root, work)
+    assert set(copied) == {"scenarios_kaggle.jsonl", "rollouts.jsonl"}
+    assert read_jsonl(work / "rollouts.jsonl") == [{"id": "shard-id"}]
+    assert read_jsonl(work / "scenarios_kaggle.jsonl") == [{"id": "shard-id"}]
+    assert datagen.copy_inputs(root, work) == []
+
+
+def test_copy_inputs_restores_a_standalone_rollout_shard(tmp_path):
+    datagen = datagen_module()
+    source = tmp_path / "input" / "dataset"
+    source.mkdir(parents=True)
+    write_jsonl(source / "scenarios_kaggle.jsonl", [{"id": "shard-id"}])
+    work = tmp_path / "working"
+    assert datagen.copy_inputs(tmp_path / "input", work) == ["scenarios_kaggle.jsonl"]
+    assert read_jsonl(work / "scenarios_kaggle.jsonl") == [{"id": "shard-id"}]
+
+
+@pytest.mark.parametrize("failed_stage", ["packs", "scenarios", "phrasing", "rollouts"])
+def test_kernel_partial_stage_failure_continues(tmp_path, monkeypatch, capsys, failed_stage):
+    datagen = datagen_module()
+    monkeypatch.setattr(datagen, "WORK", str(tmp_path))
+    monkeypatch.setattr(datagen, "TRAIN", str(ROOT / "train"))
+    monkeypatch.setattr(datagen, "KERNEL_STARTED_AT", 1)
+    monkeypatch.setattr(datagen, "time", SimpleNamespace(time=lambda: 1))
+    monkeypatch.setattr(datagen, "copy_inputs", lambda **kwargs: [])
+    monkeypatch.setattr(datagen, "find_inputs", lambda: None)
+    monkeypatch.setattr(datagen, "start_server", lambda: SimpleNamespace(
+        terminate=lambda: None, wait=lambda **kwargs: None))
+    called = []
+
+    def stage(name, args, **kwargs):
+        called.append(name)
+        for path in kwargs.get("outputs", []):
+            write_jsonl(Path(path), [{"id": "available-output"}])
+        return {"stage": name, "returncode": int(name == failed_stage)}
+
+    monkeypatch.setattr(datagen, "stage", stage)
+    datagen.main()
+    assert called == ["packs", "scenarios", "phrasing", "rollouts", "build"]
+    output = capsys.readouterr().out
+    assert f"stage {failed_stage} failed; continuing with available output" in output
+
+
+def test_kernel_rollout_only_skips_pack_scenario_and_phrasing_stages(tmp_path, monkeypatch, capsys):
+    datagen = datagen_module()
+    shard = tmp_path / "scenarios_kaggle.jsonl"
+    write_jsonl(shard, [{"id": "hosted-scenario-id"}])
+    monkeypatch.setattr(datagen, "WORK", str(tmp_path))
+    # Rollout-only mode should not need domains.txt or regenerate saved IDs.
+    monkeypatch.setattr(datagen, "TRAIN", str(tmp_path / "train"))
+    monkeypatch.setattr(datagen, "KERNEL_STARTED_AT", 1)
+    monkeypatch.setattr(datagen, "time", SimpleNamespace(time=lambda: 1))
+    monkeypatch.setattr(datagen, "copy_inputs", lambda **kwargs: [])
+    monkeypatch.setattr(datagen, "find_inputs", lambda: None)
+    terminated = []
+    monkeypatch.setattr(datagen, "start_server", lambda: SimpleNamespace(
+        terminate=lambda: terminated.append(True), wait=lambda **kwargs: None))
+    called = []
+
+    def stage(name, args, **kwargs):
+        called.append((name, args, kwargs))
+        return {"stage": name, "returncode": 0}
+
+    monkeypatch.setattr(datagen, "stage", stage)
+    datagen.main()
+    assert [name for name, _, _ in called] == ["rollouts", "build"]
+    rollout_args = called[0][1]
+    assert rollout_args[rollout_args.index("--scenarios") + 1] == str(shard)
+    assert read_jsonl(shard) == [{"id": "hosted-scenario-id"}]
+    assert terminated == [True]
+    summary = json.loads(capsys.readouterr().out.splitlines()[-1].removeprefix("SUMMARY "))
+    assert summary["rollout_only"] is True

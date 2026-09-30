@@ -20,7 +20,16 @@ import time
 from pathlib import Path
 
 import httpx
-from pipeline import add_hosted_args, backoff_delay, completed, hosted_config, retry_after
+from checks import failures
+from pipeline import (
+    TeacherTransport,
+    UsageLimitError,
+    add_hosted_args,
+    backoff_delay,
+    completed,
+    hosted_config,
+    retry_after,
+)
 
 from tholos import fetch
 from tholos.bench import runner as bench
@@ -42,14 +51,16 @@ def install_fixture_union(scenarios):
 
 
 def _record(scenario, result, teacher):
+    extra = failures(scenario, result["messages"])
     return {
         "id": scenario["id"],
         "category": scenario["category"],
         "template": scenario["template"],
         "domain": scenario.get("domain", ""),
         "teacher": teacher,
-        "passed": result["passed"],
-        "failed_assertions": result["failed_assertions"],
+        "passed": result["passed"] and not extra,
+        "semantic_checked": bool(scenario.get("checks")),
+        "failed_assertions": result["failed_assertions"] + extra,
         "steps": result["steps"],
         "invalid_json_count": result["invalid_json_count"],
         "tokens": result["tokens"],
@@ -58,26 +69,37 @@ def _record(scenario, result, teacher):
     }
 
 
-def run_one(scenario, profile, teacher, throttle=None, attempts=6):
+def run_one(scenario, profile, teacher, throttle=None, attempts=6, transport=None):
     """Run one scenario, retrying failures that happened before the first step.
 
     The runtime records an HTTP failure as a failed run with zero steps, so a
     failed run with no steps is the transient-error signal available here.
     """
+    if transport is not None:
+        # Keep the limit signal per scenario; model.step runs in a separate thread.
+        transport = TeacherTransport(transport.transport, transport.throttle, transport.stopped)
     result = None
     for attempt in range(attempts):
         try:
             if throttle is not None:
                 throttle.wait()
-            result = bench.run_scenario(scenario, profile)
+            result = (bench.run_scenario(scenario, profile, transport) if transport is not None
+                      else bench.run_scenario(scenario, profile))
+            if transport is not None:
+                transport.raise_if_limited()
             if result["passed"] or result["steps"] > 0:
                 return _record(scenario, result, teacher)
+        except UsageLimitError:
+            raise
         except httpx.HTTPError as exc:
             response = getattr(exc, "response", None)
             if attempt < attempts - 1:
                 hint = retry_after(response) if response is not None else None
                 time.sleep(backoff_delay(attempt, hint))
-            result = None
+            result = {"passed": False,
+                      "failed_assertions": [{"type": "crash", "error": type(exc).__name__}],
+                      "steps": 0, "invalid_json_count": 0, "tokens": {"in": 0, "out": 0},
+                      "seconds": 0.0, "messages": []}
             continue
         except Exception as exc:  # noqa: BLE001 - one bad scenario must not stop the run
             return {
@@ -139,9 +161,10 @@ def main(argv=None):
         "max_tokens": args.max_tokens,
     }
     passed, written = 0, 0
-    with open(args.out, "a", encoding="utf-8") as file:
+    with (open(args.out, "a", encoding="utf-8") as file,
+          TeacherTransport(throttle=throttle) as transport):
         def work(scenario):
-            return run_one(scenario, profile, args.teacher, throttle)
+            return run_one(scenario, profile, args.teacher, attempts=1, transport=transport)
 
         for _, result in completed(work, todo, args.workers, args.deadline):
             file.write(json.dumps(result, ensure_ascii=False) + "\n")

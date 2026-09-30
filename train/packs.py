@@ -14,7 +14,8 @@ import threading
 import time
 from pathlib import Path
 
-from pipeline import add_hosted_args, completed, hosted_config, post_json
+import httpx
+from pipeline import UsageLimitError, add_hosted_args, completed, hosted_config, post_json
 from templates import validate_pack
 
 PACK_SCHEMA = {
@@ -72,31 +73,38 @@ SYSTEM = (
     "You write compact JSON datasets for a shared workspace app. You reply with "
     "strict JSON only, matching the given schema. Content rules: realistic and "
     "specific, never placeholder text; lowercase snake_case table and column "
-    "names; first column values unique per table; cell values are strings, "
-    "numbers, booleans, or null; no em dashes anywhere."
+    "names (table names at most 25 characters, column names at most 21); "
+    "first column values unique per table; cell values are strings, "
+    "numbers, booleans, or null; English only, no emoji or em dashes anywhere."
 )
 
 USER = """Domain: {domain}
 Variation seed: {seed} (make this pack clearly different from other packs for the same domain).
 
 Write a workspace pack for this domain:
-- one or two tables: name, 3 to 8 columns, 6 to 24 realistic rows
-- one to three notes: a title and a body of one to four sentences
-- two to four teammates: short distinct first names, each with a different
+- one table: name, 3 to 5 columns, 6 to 10 realistic rows; keep cells short
+- one or two notes: a title and a body of one or two sentences
+- two or three teammates: short distinct first names, each with a different
   one-sentence responsibility that ends with a period
 - five "fresh" items: short realistic NEW entries for this domain that are NOT
   present in the tables (they will be used as incoming data)
+
+Return exactly these JSON keys: tables, notes, team, fresh.
+Each tables entry has name (string), columns (string array), rows (object array).
+Each row uses the column names as keys. Each notes entry has title and body.
+Each team entry has name and role. fresh is an array of five strings.
+Do not wrap the pack in another object.
 
 Keep every string free of em dashes. Use plain ASCII quotes."""
 
 
 def chat(base_url, model, messages, schema, temperature, timeout=180, api_key=None,
-         json_mode="schema", throttle=None):
+         json_mode="schema", throttle=None, max_tokens=4096):
     payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
-        "max_tokens": 2048,
+        "max_tokens": max_tokens,
         "chat_template_kwargs": {"enable_thinking": False},
     }
     if json_mode == "schema" and schema is not None:
@@ -112,7 +120,10 @@ def chat(base_url, model, messages, schema, temperature, timeout=180, api_key=No
             throttle.wait()
         return post_json(url, payload, headers, timeout)
 
-    return send()["choices"][0]["message"]["content"]
+    choice = send()["choices"][0]
+    if choice.get("finish_reason") == "length":
+        raise ValueError(f"response truncated at {max_tokens} tokens")
+    return choice["message"]["content"]
 
 
 def parse_pack_text(text, json_mode):
@@ -128,13 +139,15 @@ def one_pack(base_url, model, domain, index, seed, temperature, attempts=4, api_
              json_mode="schema", throttle=None):
     """Ask the teacher for one pack; retry until it validates."""
     last = "no attempt"
-    for _ in range(attempts):
+    for attempt in range(attempts):
         try:
             messages = [
                 {"role": "system", "content": SYSTEM},
                 {"role": "user", "content": USER.format(domain=domain, index=index,
                                                         seed=seed)},
             ]
+            if attempt:
+                messages[-1]["content"] += f"\nPrevious attempt failed validation: {last}. Fix it."
             pack = parse_pack_text(
                 chat(base_url, model, messages, PACK_SCHEMA, temperature,
                      api_key=api_key, json_mode=json_mode, throttle=throttle), json_mode)
@@ -143,8 +156,17 @@ def one_pack(base_url, model, domain, index, seed, temperature, attempts=4, api_
             if error is None:
                 return pack, None
             last = error
+        except UsageLimitError:
+            raise
+        except httpx.HTTPError as exc:
+            last = f"{type(exc).__name__}: teacher HTTP request failed after retries"
+            print(f"pack {domain!r} index={index} attempt={attempt + 1}: {last}", flush=True)
+            return None, last
         except Exception as exc:  # noqa: BLE001 - recorded, retried
             last = repr(exc)
+        if api_key:
+            last = last.replace(api_key, "[redacted]")
+        print(f"pack {domain!r} index={index} attempt={attempt + 1}: {last}", flush=True)
     return None, last
 
 
@@ -197,7 +219,7 @@ def main(argv=None):
                                args.temperature, api_key=api_key,
                                json_mode=args.json_mode, throttle=throttle)
         if pack is None:
-            return False
+            return error
         line = json.dumps({"domain": domain, "index": index, "pack": pack,
                            "teacher": args.teacher}, ensure_ascii=False)
         with lock:
@@ -209,14 +231,14 @@ def main(argv=None):
 
     # Open even on an expired deadline, so later stages can consume an empty checkpoint.
     Path(args.out).touch(exist_ok=True)
-    for job, success in completed(work, jobs, args.workers, args.deadline):
-        if not success:
-            failed.append(job)
+    for job, result in completed(work, jobs, args.workers, args.deadline):
+        if result is not True:
+            failed.append((job, result))
     print(f"wrote {written[0]} packs to {args.out}; {len(failed)} jobs failed")
-    for job in failed[:20]:
-        print("  failed:", job)
+    for job, error in failed:
+        print("  failed:", job, error)
     expired = args.deadline is not None and time.time() >= args.deadline
-    return 1 if failed and not expired else 0
+    return 1 if failed and not (written[0] or keys or expired) else 0
 
 
 if __name__ == "__main__":
