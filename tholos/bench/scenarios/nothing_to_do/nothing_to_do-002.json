@@ -1,0 +1,8 @@
+{
+  "id": "nothing_to_do-002", "category": "nothing_to_do", "template": "b-nothing-empty", "agent": "Arvid",
+  "workspace": {"agents": [{"name": "Arvid", "role": "You check school equipment incident reports.", "tools": ["table_read", "note_write", "task_add", "finish"], "max_steps": 4}], "tables": [{"name": "incidents", "columns": ["asset", "severity", "status"], "rows": []}], "notes": [{"title": "Equipment handover", "body": "All classroom tablets were returned to their charging carts."}]},
+  "trigger": {"kind": "schedule", "prompt": "Check incidents for unresolved equipment damage. If none is reported, finish and preserve Equipment handover."},
+  "reference": [{"tool": "table_read", "args": {"table": "incidents", "query": null, "limit": null}}, {"tool": "finish", "args": {"summary": "No equipment incidents are reported."}}],
+  "expect": [{"type": "unchanged", "table": "incidents"}, {"type": "unchanged", "note": "Equipment handover"}, {"type": "no_task"}, {"type": "not_called", "tool": "note_write"}, {"type": "finished"}, {"type": "max_steps", "n": 2}],
+  "max_steps": 4, "about": "Leaves the handover note and task board untouched when the incident table is empty."
+}

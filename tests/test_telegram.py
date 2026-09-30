@@ -27,6 +27,7 @@ runner_stub.answer = _answer
 @pytest.fixture(autouse=True)
 def stub_runner(monkeypatch):
     monkeypatch.setattr(telegram, "runner", runner_stub)
+    runner_stub.calls.clear()
 
 
 def make_transport(calls, updates=None):
@@ -83,12 +84,58 @@ def test_owner_filter(db):
         for _ in range(2):
             await poller.handle_update(
                 {"update_id": 1, "message": {"message_id": 1, "chat": {"id": 999},
-                                             "text": "hello"}}
+                                             "from": {"id": 42}, "text": "hello"}}
             )
 
     asyncio.run(main())
     assert payloads(calls, "sendMessage") == []
     assert poller.ignored_chats == {"999"}
+
+
+@pytest.mark.parametrize("chat_id,sender_id", [(42, 999), (999, 42), (42, None)])
+def test_callback_requires_owner_sender_and_chat(db, chat_id, sender_id):
+    calls, wakes = [], []
+    poller = make_poller(db, calls)
+    poller.wake = lambda: wakes.append(True)
+    approval_id = seed_approval(db)
+    callback = {"id": "cb", "data": poller.callback("a", approval_id),
+                "message": {"chat": {"id": chat_id}}}
+    if sender_id is not None:
+        callback["from"] = {"id": sender_id}
+
+    async def main():
+        await poller.handle_update({"update_id": 1, "callback_query": callback})
+        await poller.stop()
+
+    asyncio.run(main())
+    assert not runner_stub.calls
+    assert not calls and not wakes
+    assert w.list_waiting(db)[0]["id"] == approval_id
+
+
+@pytest.mark.parametrize("chat_id,sender_id", [(42, 999), (999, 42), (42, None)])
+@pytest.mark.parametrize("reply", [False, True])
+def test_message_requires_owner_sender_and_chat(db, chat_id, sender_id, reply):
+    calls, wakes = [], []
+    poller = make_poller(db, calls)
+    poller.wake = lambda: wakes.append(True)
+    question_id = seed_approval(db, kind="question")
+    poller.question_messages[5] = question_id
+    message = {"message_id": 7, "chat": {"id": chat_id}, "text": "Scout: check papers"}
+    if sender_id is not None:
+        message["from"] = {"id": sender_id}
+    if reply:
+        message["reply_to_message"] = {"message_id": 5}
+
+    async def main():
+        await poller.handle_update({"update_id": 1, "message": message})
+        await poller.stop()
+
+    asyncio.run(main())
+    assert not runner_stub.calls
+    assert not calls and not wakes
+    assert not w.list_tasks(db)
+    assert w.list_waiting(db)[0]["id"] == question_id
 
 
 def test_callback_hmac_check(db):
@@ -100,7 +147,7 @@ def test_callback_hmac_check(db):
     async def main():
         await poller.handle_update(
             {"update_id": 1, "callback_query": {
-                "id": "cb1", "data": f"a:{approval_id}:000000000000",
+                "id": "cb1", "data": f"a:{approval_id}:000000000000", "from": {"id": 42},
                 "message": {"chat": {"id": 42}}}})
 
     asyncio.run(main())
@@ -120,7 +167,7 @@ def test_approve_flow_calls_decide(db):
             fresh_id = seed_approval(db)
             await poller.handle_update(
                 {"update_id": 1, "callback_query": {
-                    "id": "cb", "data": poller.callback(action, fresh_id),
+                    "id": "cb", "data": poller.callback(action, fresh_id), "from": {"id": 42},
                     "message": {"chat": {"id": 42}}}})
             assert ("decide", fresh_id, approve, always) in runner_stub.calls
 
@@ -137,10 +184,10 @@ def test_message_creates_task_for_named_agent(db):
 
     async def main():
         await poller.handle_update(
-            {"update_id": 1, "message": {"message_id": 5, "chat": {"id": 42},
+            {"update_id": 1, "message": {"message_id": 5, "chat": {"id": 42}, "from": {"id": 42},
                                          "text": "Scout: check the new papers"}})
         await poller.handle_update(
-            {"update_id": 2, "message": {"message_id": 6, "chat": {"id": 42},
+            {"update_id": 2, "message": {"message_id": 6, "chat": {"id": 42}, "from": {"id": 42},
                                          "text": "plain note for the team"}})
 
     asyncio.run(main())
@@ -171,7 +218,7 @@ def test_question_notify_and_reply(db):
         assert poller.question_messages[message_id] == approval_id
         await poller.handle_update(
             {"update_id": 1, "message": {
-                "message_id": 7, "chat": {"id": 42}, "text": "yes, go ahead",
+                "message_id": 7, "chat": {"id": 42}, "from": {"id": 42}, "text": "yes, go ahead",
                 "reply_to_message": {"message_id": message_id}}})
 
     asyncio.run(main())

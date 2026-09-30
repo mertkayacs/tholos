@@ -5,8 +5,14 @@ from types import ModuleType
 
 import pytest
 
-from tholos import cli
+from tholos import cli, web
 from tholos import workspace as w
+
+
+@pytest.fixture(autouse=True)
+def cli_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("THOLOS_HOME", str(tmp_path))
+    monkeypatch.setenv("THOLOS_HOST", "127.0.0.1")
 
 
 def test_teams(db):
@@ -50,6 +56,7 @@ def test_cli_export(db, tmp_path, monkeypatch, capsys):
 def test_cli_serve(argv, host, port, monkeypatch):
     module = ModuleType("tholos.web")
     module.app = object()
+    module.is_loopback = web.is_loopback
     monkeypatch.setitem(sys.modules, "tholos.web", module)
     calls = []
     import uvicorn
@@ -102,3 +109,72 @@ def test_cli_bench(monkeypatch):
     ]
     with pytest.raises(SystemExit):
         cli.main(["bench", "--base-url", "url", "--model", "small", "--api-key-env", "MISSING_KEY"])
+
+
+def test_cli_first_run_output(db, monkeypatch, capsys):
+    import uvicorn
+
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: None)
+    cli.main([])
+    assert capsys.readouterr().out == (
+        "Tholos: http://127.0.0.1:7070\n"
+        "No model yet. Run: ollama pull hf.co/mertkayacs/Tholos-2B:Q4_K_M, "
+        "then open Settings > Detect.\n"
+    )
+    assert w.get_setting(db, "access_token") is None
+
+
+@pytest.mark.parametrize(
+    "host,url",
+    [
+        ("127.0.0.2", "http://127.0.0.2:7070"),
+        ("localhost", "http://localhost:7070"),
+        ("::1", "http://[::1]:7070"),
+    ],
+)
+def test_cli_loopback_hides_token_and_configured_model_hint(db, monkeypatch, capsys, host, url):
+    import uvicorn
+
+    w.set_setting(db, "access_token", "saved-owner-token")
+    w.save_model(
+        db, None, "Local", "http://localhost/v1", "small", "stored-model-key", "schema", 0, 512
+    )
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: None)
+    cli.main(["--host", host])
+    assert capsys.readouterr().out == f"Tholos: {url}\n"
+
+
+def test_cli_environment_host_enables_auth_and_reuses_token(db, monkeypatch, capsys):
+    import uvicorn
+    from starlette.testclient import TestClient
+
+    monkeypatch.setenv("THOLOS_HOST", "0.0.0.0")
+
+    def serve(app, **kwargs):
+        assert kwargs["host"] == "0.0.0.0"
+        with TestClient(app) as client:
+            assert not app.state.loopback
+            assert client.get("/", follow_redirects=False).status_code == 303
+
+    monkeypatch.setattr(uvicorn, "run", serve)
+    cli.main([])
+    token = w.get_setting(db, "access_token")
+    assert token and f"Access token: {token}\n" in capsys.readouterr().out
+    cli.main([])
+    assert w.get_setting(db, "access_token") == token
+    assert f"Access token: {token}\n" in capsys.readouterr().out
+
+
+def test_cli_host_flag_updates_web_auth_host(db, monkeypatch, capsys):
+    import uvicorn
+    from starlette.testclient import TestClient
+
+    def serve(app, **kwargs):
+        assert kwargs["host"] == "0.0.0.0"
+        with TestClient(app) as client:
+            assert not app.state.loopback
+            assert client.get("/", follow_redirects=False).status_code == 303
+
+    monkeypatch.setattr(uvicorn, "run", serve)
+    cli.main(["--host", "0.0.0.0"])
+    assert f"Access token: {w.get_setting(db, 'access_token')}\n" in capsys.readouterr().out

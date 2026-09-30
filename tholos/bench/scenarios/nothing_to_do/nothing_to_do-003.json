@@ -1,0 +1,8 @@
+{
+  "id": "nothing_to_do-003", "category": "nothing_to_do", "template": "b-nothing-filtered", "agent": "Roxane",
+  "workspace": {"agents": [{"name": "Roxane", "role": "You follow up on unprocessed shop returns.", "tools": ["table_read", "table_update", "task_add", "finish"], "max_steps": 4}], "tables": [{"name": "returns", "columns": ["receipt", "status"], "rows": [{"receipt": "RT-301", "status": "refunded"}, {"receipt": "RT-302", "status": "exchanged"}, {"receipt": "RT-303", "status": "refunded"}, {"receipt": "RT-304", "status": "declined"}]}]},
+  "trigger": {"kind": "schedule", "prompt": "Read returns and act only on rows with status pending. If there are no pending returns, finish without writing or assigning work."},
+  "reference": [{"tool": "table_read", "args": {"table": "returns", "query": "status:pending", "limit": null}}, {"tool": "finish", "args": {"summary": "Every listed return has been processed; none is pending."}}],
+  "expect": [{"type": "unchanged", "table": "returns"}, {"type": "rows", "table": "returns", "count": 4}, {"type": "not_called", "tool": "table_update"}, {"type": "no_task"}, {"type": "finished"}, {"type": "max_steps", "n": 2}],
+  "max_steps": 4, "about": "Finds no pending returns in a populated table and avoids unnecessary writes."
+}

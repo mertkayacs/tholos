@@ -148,6 +148,17 @@ async def _csrf_error(request: Request, session: dict) -> str | None:
 class GuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         state = request.app.state
+        if state.loopback:
+            hosts = request.headers.getlist("host")
+            if len(hosts) != 1 or not re.fullmatch(
+                r"(?:127\.0\.0\.1|localhost|\[::1\])(?::[0-9]+)?|::1", hosts[0], re.IGNORECASE
+            ):
+                port = (request.scope.get("server") or ("127.0.0.1", 7070))[1]
+                return PlainTextResponse(
+                    f"This address is not allowed. Open http://127.0.0.1:{port} instead.",
+                    403,
+                    headers=SECURITY_HEADERS,
+                )
         session = _read_session(state.secret, request.cookies.get(COOKIE, ""))
         path = request.url.path
         authed = state.loopback or bool(session and session["authed"])

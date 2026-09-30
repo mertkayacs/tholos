@@ -1,0 +1,8 @@
+{
+  "id": "nothing_to_do-008", "category": "nothing_to_do", "template": "b-nothing-two-tables", "agent": "Quentin",
+  "workspace": {"agents": [{"name": "Quentin", "role": "You check a repair cafe's intake and parts queues.", "tools": ["table_read", "table_add", "table_update", "task_add", "finish"], "max_steps": 5}], "tables": [{"name": "intake", "columns": ["ticket", "status"], "rows": [{"ticket": "RC-52", "status": "returned"}, {"ticket": "RC-53", "status": "returned"}]}, {"name": "parts_queue", "columns": ["part", "status"], "rows": [{"part": "Lamp switch", "status": "received"}, {"part": "Toaster spring", "status": "received"}, {"part": "Fan cable", "status": "received"}]}]},
+  "trigger": {"kind": "schedule", "prompt": "Check intake for status new and parts_queue for status ordered. If both checks are empty, finish without changes or tasks."},
+  "reference": [{"tool": "table_read", "args": {"table": "intake", "query": "status:new", "limit": null}}, {"tool": "table_read", "args": {"table": "parts_queue", "query": "status:ordered", "limit": null}}, {"tool": "finish", "args": {"summary": "No new intake tickets or outstanding parts orders."}}],
+  "expect": [{"type": "unchanged", "table": "intake"}, {"type": "unchanged", "table": "parts_queue"}, {"type": "not_called", "tool": "table_add"}, {"type": "not_called", "tool": "table_update"}, {"type": "no_task"}, {"type": "finished"}, {"type": "max_steps", "n": 3}],
+  "max_steps": 5, "about": "Checks two completed queues and finishes with no writes when both have no actionable rows."
+}

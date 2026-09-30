@@ -1,0 +1,8 @@
+{
+  "id": "nothing_to_do-004", "category": "nothing_to_do", "template": "b-nothing-filtered", "agent": "Tobin",
+  "workspace": {"agents": [{"name": "Tobin", "role": "You check merged pull requests for follow-up work.", "tools": ["table_read", "table_update", "note_write", "task_add", "finish"], "max_steps": 4}], "tables": [{"name": "pull_requests", "columns": ["number", "state"], "rows": [{"number": "PR-411", "state": "merged"}, {"number": "PR-412", "state": "closed"}, {"number": "PR-413", "state": "merged"}, {"number": "PR-414", "state": "merged"}, {"number": "PR-415", "state": "closed"}, {"number": "PR-416", "state": "merged"}]}]},
+  "trigger": {"kind": "schedule", "prompt": "Look for pull_requests with state review. Hand review work to the owner if any exists. With no review requests, finish quickly and write nothing."},
+  "reference": [{"tool": "table_read", "args": {"table": "pull_requests", "query": "state:review", "limit": null}}, {"tool": "finish", "args": {"summary": "No pull requests are awaiting review."}}],
+  "expect": [{"type": "unchanged", "table": "pull_requests"}, {"type": "not_called", "tool": "table_update"}, {"type": "not_called", "tool": "note_write"}, {"type": "no_task"}, {"type": "finished"}, {"type": "max_steps", "n": 2}],
+  "max_steps": 4, "about": "Finishes a scheduled repository check when every pull request is already closed or merged."
+}

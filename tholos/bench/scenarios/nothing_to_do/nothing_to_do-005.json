@@ -1,0 +1,8 @@
+{
+  "id": "nothing_to_do-005", "category": "nothing_to_do", "template": "b-nothing-filtered", "agent": "Viola",
+  "workspace": {"agents": [{"name": "Viola", "role": "You check volunteer shift vacancies.", "tools": ["table_read", "table_add", "task_add", "finish"], "max_steps": 4}], "tables": [{"name": "shifts", "columns": ["slot", "coverage"], "rows": [{"slot": "Monday morning", "coverage": "full"}, {"slot": "Monday evening", "coverage": "full"}, {"slot": "Tuesday morning", "coverage": "full"}, {"slot": "Tuesday evening", "coverage": "full"}, {"slot": "Wednesday morning", "coverage": "full"}, {"slot": "Wednesday evening", "coverage": "full"}, {"slot": "Thursday morning", "coverage": "full"}, {"slot": "Thursday evening", "coverage": "full"}, {"slot": "Friday morning", "coverage": "full"}, {"slot": "Friday evening", "coverage": "full"}, {"slot": "Saturday morning", "coverage": "full"}, {"slot": "Saturday evening", "coverage": "full"}]}]},
+  "trigger": {"kind": "schedule", "prompt": "Check shifts for coverage vacant. Create a recruitment task only for vacant shifts; otherwise finish without changes."},
+  "reference": [{"tool": "table_read", "args": {"table": "shifts", "query": "coverage:vacant", "limit": 50}}, {"tool": "finish", "args": {"summary": "All twelve shifts have full coverage."}}],
+  "expect": [{"type": "unchanged", "table": "shifts"}, {"type": "rows", "table": "shifts", "count": 12}, {"type": "no_task"}, {"type": "not_called", "tool": "table_add"}, {"type": "finished"}, {"type": "max_steps", "n": 2}],
+  "max_steps": 4, "about": "Avoids creating recruitment work when all scheduled shifts are filled."
+}

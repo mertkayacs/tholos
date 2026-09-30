@@ -1,0 +1,8 @@
+{
+  "id": "nothing_to_do-001", "category": "nothing_to_do", "template": "b-nothing-empty", "agent": "Jolene",
+  "workspace": {"agents": [{"name": "Jolene", "role": "You route new catering enquiries to the owner when any exist.", "tools": ["table_read", "table_add", "task_add", "finish"], "max_steps": 4}], "tables": [{"name": "enquiries", "columns": ["event", "status"], "rows": []}]},
+  "trigger": {"kind": "schedule", "prompt": "Check enquiries for new catering requests. Create an owner task only if there are new requests; otherwise finish without writes."},
+  "reference": [{"tool": "table_read", "args": {"table": "enquiries", "query": "status:new", "limit": null}}, {"tool": "finish", "args": {"summary": "No new catering enquiries."}}],
+  "expect": [{"type": "unchanged", "table": "enquiries"}, {"type": "rows", "table": "enquiries", "count": 0}, {"type": "no_task"}, {"type": "not_called", "tool": "table_add"}, {"type": "finished"}, {"type": "max_steps", "n": 2}],
+  "max_steps": 4, "about": "Ends an empty enquiry check promptly without creating rows or owner tasks."
+}

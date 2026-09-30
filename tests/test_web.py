@@ -50,7 +50,8 @@ class Worker:
 
 worker_stub = types.SimpleNamespace(Worker=Worker)
 
-ORIGIN = {"Origin": "http://testserver"}
+BASE_URL = "http://127.0.0.1:7070"
+ORIGIN = {"Origin": BASE_URL}
 
 
 class TemplateHTML(HTMLParser):
@@ -87,7 +88,7 @@ def stubs(monkeypatch):
 def client(home, stubs):
     from starlette.testclient import TestClient
 
-    with TestClient(web.app) as client:
+    with TestClient(web.app, base_url=BASE_URL) as client:
         client.get("/")  # establishes the session cookie
         yield client
 
@@ -229,6 +230,58 @@ def test_security_headers(client):
     assert "default-src 'self'" in response.headers["content-security-policy"]
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "same-origin"
+
+
+def test_telegram_settings_private_chat_help(client):
+    response = client.get("/settings")
+    assert response.status_code == 200
+    assert "Use a private chat with your bot; groups are not supported." in response.text
+    TemplateHTML(response.text)
+
+
+def test_rebinding_origin_cannot_create_task(client, side):
+    response = post(client, "/tasks", {"title": "blocked"}, headers={
+        "Host": "attacker.test:7070", "Origin": "http://attacker.test:7070",
+    })
+    assert response.status_code == 403
+    assert "This address is not allowed. Open http://127.0.0.1:7070 instead." in response.text
+    assert not w.list_tasks(side)
+
+
+@pytest.mark.parametrize("path", ["/", "/events", "/static/app.css", "/login"])
+def test_loopback_blocks_attacker_host_on_every_path(client, path):
+    response = client.get(path, headers={"Host": "attacker.test"}, follow_redirects=False)
+    assert response.status_code == 403
+    assert "This address is not allowed." in response.text
+    assert "set-cookie" not in response.headers
+    assert "default-src 'self'" in response.headers["content-security-policy"]
+
+
+@pytest.mark.parametrize("host", [
+    "127.0.0.1:7070", "localhost:7070", "[::1]:7070",
+    "127.0.0.1", "LOCALHOST", "[::1]", "::1",
+])
+def test_loopback_allows_local_hosts(client, side, host):
+    assert client.get("/", headers={"Host": host}).status_code == 200
+    assert client.get("/static/app.css", headers={"Host": host}).status_code == 200
+    response = post(client, "/tasks", {"title": "local task"}, headers={
+        "Host": host, "Origin": f"http://{host}",
+    })
+    assert response.status_code == 200
+    assert w.list_tasks(side)[0]["title"] == "local task"
+
+
+@pytest.mark.parametrize("host", [
+    "localhost.attacker.test", "127.0.0.1.attacker.test", "attacker.test@127.0.0.1",
+    "localhost/attacker.test", "[::1", "[::1]:7070.attacker.test", "",
+])
+def test_loopback_rejects_malformed_and_lookalike_hosts(client, host):
+    assert client.get("/", headers={"Host": host}).status_code == 403
+
+
+def test_loopback_rejects_duplicate_host_headers(client):
+    response = client.get("/", headers=[("Host", "127.0.0.1"), ("Host", "attacker.test")])
+    assert response.status_code == 403
 
 
 def test_csrf_missing_and_wrong(client):
@@ -387,7 +440,7 @@ def test_csv_export_neutralizes_formula(client, side):
 def test_non_loopback_requires_login(home, side, stubs, monkeypatch):
     from starlette.testclient import TestClient
     monkeypatch.setenv("THOLOS_HOST", "0.0.0.0")
-    with TestClient(web.app) as client:
+    with TestClient(web.app, base_url="http://attacker.test:7070") as client:
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == "/login"
@@ -399,12 +452,14 @@ def test_non_loopback_requires_login(home, side, stubs, monkeypatch):
         token = w.get_setting(side, "access_token")
         assert token
         bad = client.post(
-            "/login", data={"token": "wrong"}, headers=ORIGIN, follow_redirects=False
+            "/login", data={"token": "wrong"},
+            headers={"Origin": "http://attacker.test:7070"}, follow_redirects=False
         )
         assert bad.status_code == 403
         TemplateHTML(bad.text)
         good = client.post(
-            "/login", data={"token": token}, headers=ORIGIN, follow_redirects=False
+            "/login", data={"token": token},
+            headers={"Origin": "http://attacker.test:7070"}, follow_redirects=False
         )
         assert good.status_code == 303
         assert client.get("/").status_code == 200

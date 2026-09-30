@@ -1,0 +1,8 @@
+{
+  "id": "nothing_to_do-006", "category": "nothing_to_do", "template": "b-nothing-note", "agent": "Hamish",
+  "workspace": {"agents": [{"name": "Hamish", "role": "You review pending hall-opening actions.", "tools": ["note_read", "note_write", "task_add", "finish"], "max_steps": 4}], "notes": [{"title": "Hall opening actions", "body": "All opening actions are complete. Keys collected, exits checked, kettle tested."}]},
+  "trigger": {"kind": "schedule", "prompt": "Read Hall opening actions. If any action is pending, create an owner task. Otherwise finish without editing the note."},
+  "reference": [{"tool": "note_read", "args": {"title": "Hall opening actions"}}, {"tool": "finish", "args": {"summary": "The hall opening actions are complete."}}],
+  "expect": [{"type": "unchanged", "note": "Hall opening actions"}, {"type": "not_called", "tool": "note_write"}, {"type": "no_task"}, {"type": "finished"}, {"type": "max_steps", "n": 2}],
+  "max_steps": 4, "about": "Reads a completed action note and leaves both the note and task board unchanged."
+}
