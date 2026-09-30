@@ -51,6 +51,179 @@ def test_valid_step():
     assert messages == [{"role": "user", "content": "Check"}]
 
 
+@pytest.mark.parametrize("mode", ["schema", "object", "none"])
+def test_missing_optional_args(mode):
+    text = w.dumps({"thought": "Read", "tool": "table_read", "args": {"table": "leads"}})
+    result = model.step(
+        PROFILE | {"json_mode": mode},
+        [],
+        tools.schemas(["table_read"]),
+        httpx.MockTransport(lambda _: completion(text)),
+    )
+    assert result.error is None and result.invalid_json_count == 0
+    assert result.args == {"table": "leads", "query": None, "limit": None}
+    assert result.message() == {
+        "role": "assistant",
+        "content": '{"thought":"Read","tool":"table_read",'
+        '"args":{"table":"leads","query":null,"limit":null}}',
+    }
+
+
+@pytest.mark.parametrize("mode", ["schema", "object", "none"])
+def test_args_follow_schema_order(mode):
+    text = '{"thought":"Read","tool":"table_read","args":{"limit":5,"table":"leads"}}'
+    result = model.step(
+        PROFILE | {"json_mode": mode},
+        [],
+        tools.schemas(["table_read"]),
+        httpx.MockTransport(lambda _: completion(text)),
+    )
+    assert result.error is None and result.invalid_json_count == 0
+    assert result.args == {"table": "leads", "query": None, "limit": 5}
+    assert list(result.args) == ["table", "query", "limit"]
+    assert result.message() == {
+        "role": "assistant",
+        "content": '{"thought":"Read","tool":"table_read",'
+        '"args":{"table":"leads","query":null,"limit":5}}',
+    }
+
+
+@pytest.mark.parametrize("mode", ["schema", "object", "none"])
+def test_normalize_table_add_rows(db, mode):
+    w.create_table(db, "alpha", ["name"], "you")
+    w.create_table(db, "leads", ["title", "score"], "you")
+    text = w.dumps(
+        {
+            "thought": "Add",
+            "tool": "table_add",
+            "args": {"rows": [{"score": 5}, {"score": 2, "title": "Sparrow"}], "table": "leads"},
+        }
+    )
+    result = model.step(
+        PROFILE | {"json_mode": mode},
+        [],
+        tools.schemas(["table_add"], db),
+        httpx.MockTransport(lambda _: completion(text)),
+    )
+    assert result.error is None and result.invalid_json_count == 0
+    assert result.args == {
+        "table": "leads",
+        "rows": [{"title": None, "score": 5}, {"title": "Sparrow", "score": 2}],
+    }
+    assert list(result.args) == ["table", "rows"]
+    assert all(list(row) == ["title", "score"] for row in result.args["rows"])
+    assert result.message()["content"] == (
+        '{"thought":"Add","tool":"table_add","args":{"table":"leads",'
+        '"rows":[{"title":null,"score":5},{"title":"Sparrow","score":2}]}}'
+    )
+
+
+def test_normalize_table_update_values(db):
+    w.create_table(db, "alpha", ["name"], "you")
+    w.create_table(db, "leads", ["title", "score", "status"], "you")
+    row = w.add_rows(db, "leads", [{"title": "Sparrow", "score": 1, "status": "open"}], "you")[0]
+    text = w.dumps(
+        {
+            "thought": "Update",
+            "tool": "table_update",
+            "args": {"values": {"score": 5}, "row": row, "table": "leads"},
+        }
+    )
+    result = model.step(
+        PROFILE | {"json_mode": "object"},
+        [],
+        tools.schemas(["table_update"], db),
+        httpx.MockTransport(lambda _: completion(text)),
+    )
+    assert result.error is None and result.invalid_json_count == 0
+    assert result.args == {
+        "table": "leads", "row": row, "values": {"title": None, "score": 5, "status": None}
+    }
+    assert list(result.args) == ["table", "row", "values"]
+    assert list(result.args["values"]) == ["title", "score", "status"]
+    aid = w.save_agent(db, None, "Scout", "Check rows.", None, ["table_read", "table_update"])
+    run = w.get_run(db, w.queue_run(db, aid, "Check", "message"))
+    agent = w.get_agent(db, aid)
+    read = tools.run_tool(
+        db, run, agent, "table_read", {"table": "leads", "query": None, "limit": None}
+    )
+    assert "error" not in read
+    updated = tools.run_tool(db, run, agent, "table_update", result.args)
+    assert "error" not in updated
+    assert w.get_table(db, "leads")["rows"][0]["data"] == {
+        "title": "Sparrow", "score": 5, "status": "open"
+    }
+
+
+@pytest.mark.parametrize(
+    "name,args,error",
+    [
+        (
+            "table_add",
+            {"table": "leads", "rows": [{"title": None, "score": 5, "extra": True}]},
+            "step.args.rows[] contains unknown properties",
+        ),
+        (
+            "table_update",
+            {"table": "leads", "row": 1, "values": {"title": None, "score": 5, "extra": True}},
+            "step.args.values contains unknown properties",
+        ),
+        (
+            "table_add",
+            {"table": "missing", "rows": [{"score": 5}]},
+            "step.args.table must equal 'leads'",
+        ),
+        (
+            "table_update",
+            {"table": "missing", "row": 1, "values": {"score": 5}},
+            "step.args.table must equal 'leads'",
+        ),
+    ],
+)
+def test_invalid_nested_args(db, name, args, error):
+    w.create_table(db, "alpha", ["name"], "you")
+    w.create_table(db, "leads", ["title", "score"], "you")
+    text = w.dumps({"thought": "Write", "tool": name, "args": args})
+    result = model.step(
+        PROFILE | {"json_mode": "object"},
+        [],
+        tools.schemas([name], db),
+        httpx.MockTransport(lambda _: completion(text)),
+    )
+    assert result.error and error in result.error
+    assert result.invalid_json_count == 2
+
+
+@pytest.mark.parametrize(
+    "args,error",
+    [
+        ({"query": None, "limit": None}, "step.args is missing ['table']"),
+        (
+            {"table": "leads", "query": None, "limit": None, "extra": True},
+            "step.args contains unknown properties",
+        ),
+        (
+            {"table": "leads", "query": 2, "limit": None},
+            "step.args.query must have type ['string', 'null']",
+        ),
+        (
+            {"table": "leads", "query": None, "limit": "10"},
+            "step.args.limit must have type ['integer', 'null']",
+        ),
+    ],
+)
+def test_invalid_table_read_args(args, error):
+    text = w.dumps({"thought": "Read", "tool": "table_read", "args": args})
+    result = model.step(
+        PROFILE,
+        [],
+        tools.schemas(["table_read"]),
+        httpx.MockTransport(lambda _: completion(text)),
+    )
+    assert result.error == "step does not match an allowed schema: " + error
+    assert result.invalid_json_count == 2
+
+
 def test_invalid_then_valid():
     bodies = []
     replies = iter(["not json", '{"thought":"OK","tool":"finish","args":{"summary":"Ready"}}'])

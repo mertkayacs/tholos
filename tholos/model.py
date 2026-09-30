@@ -103,6 +103,33 @@ def validate(value: Any, spec: dict, path: str = "step") -> None:
         raise ValueError(f"{path} is out of range")
 
 
+def _normalize(value: Any, spec: dict) -> Any:
+    """Fill nullable properties and order keys recursively by schema."""
+    if "anyOf" in spec:
+        for branch in spec["anyOf"]:
+            if isinstance(value, dict) and all(
+                key in value
+                and type(value[key]) is type(prop["const"])
+                and value[key] == prop["const"]
+                for key, prop in branch.get("properties", {}).items()
+                if "const" in prop
+            ):
+                return _normalize(value, branch)
+        return value
+    if isinstance(value, dict) and "properties" in spec:
+        result = {}
+        for key, prop in spec["properties"].items():
+            if key in value:
+                result[key] = _normalize(value[key], prop)
+            elif "null" in prop.get("type", []):
+                result[key] = None
+        result.update((key, item) for key, item in value.items() if key not in spec["properties"])
+        return result
+    if isinstance(value, list) and "items" in spec:
+        return [_normalize(item, spec["items"]) for item in value]
+    return value
+
+
 def _pairs(pairs: list[tuple[str, Any]]) -> dict:
     result = {}
     for key, value in pairs:
@@ -174,6 +201,10 @@ def step(
             try:
                 text = data["choices"][0]["message"]["content"]
                 value = json.loads(text, object_pairs_hook=_pairs, parse_constant=_constant)
+                if isinstance(value, dict) and "args" in value:
+                    name = value.get("tool")
+                    if isinstance(name, str) and name in tools:
+                        value["args"] = _normalize(value["args"], tools[name])
                 validate(value, spec)
                 result.thought, result.tool, result.args = (
                     value["thought"][:240],
