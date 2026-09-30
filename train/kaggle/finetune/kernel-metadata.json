@@ -1,0 +1,14 @@
+{
+  "id": "mertilovski/tholos-finetune",
+  "title": "tholos-finetune",
+  "code_file": "finetune.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": ["mertilovski/tholos-sft"],
+  "kernel_sources": [],
+  "competition_sources": []
+}
