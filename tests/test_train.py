@@ -1822,3 +1822,146 @@ def test_kernel_rollout_only_reuses_a_phrased_shard(tmp_path, monkeypatch, capsy
     assert terminated == [True]
     summary = json.loads(capsys.readouterr().out.splitlines()[-1].removeprefix("SUMMARY "))
     assert summary["rollout_only"] is True
+
+
+# -------------------------------------------------------------------- regrade
+
+DENIED = {"kind": "outcome", "status": "denied", "subject": "checkouts"}
+DENIED_TEXT = "The owner denied the update; nothing was added to the checkouts table."
+ABSENT = {"kind": "outcome", "status": "absent", "subject": "fa_109"}
+RUNTIME = {"type": "finished"}
+TRIGGER = {"kind": "message", "text": "Log the checkout for the opti."}
+
+
+def _stored(tid, summary, *failed):
+    """A rollout that ended with this summary, graded earlier as failing on `failed`."""
+    system = {"role": "system", "content": "You are Linden, an agent in a Tholos workspace."}
+    opening = {"role": "user", "content": "Now: 2026-10-01T09:00:00+03:00, Thursday\n"
+               "Message from the owner: " + TRIGGER["text"]}
+    record = _fake_rollout(tid, 1, [system, opening, *_finish_messages(summary)])
+    return record | {"passed": not failed, "failed_assertions": list(failed)}
+
+
+def _scenario(record, *checks):
+    return {"id": record["id"], "template": record["template"],
+            "category": record["category"], "trigger": TRIGGER, "checks": list(checks)}
+
+
+def _regrade(record, *checks):
+    return B.regrade([record], {record["id"]: _scenario(record, *checks)})
+
+
+def test_regrade_passes_a_record_that_only_failed_a_fixed_check():
+    record = _stored("t-deny", DENIED_TEXT, DENIED)
+    (regraded,), gained, lost = _regrade(record, DENIED)
+    assert regraded["passed"] and regraded["failed_assertions"] == []
+    assert gained == Counter({"t-deny": 1}) and not lost
+    assert not record["passed"] and record["failed_assertions"] == [DENIED]
+
+
+def test_regrade_keeps_runtime_failures_and_drops_stale_check_failures():
+    record = _stored("t-deny", DENIED_TEXT, RUNTIME, DENIED)
+    (regraded,), gained, lost = _regrade(record, DENIED)
+    assert not regraded["passed"] and regraded["failed_assertions"] == [RUNTIME]
+    assert not gained and not lost
+
+
+def test_regrade_fails_a_passing_record_the_current_checks_reject():
+    record = _stored("t-absent", "Added fa_109 to flight_approvals as requested.")
+    (regraded,), gained, lost = _regrade(record, ABSENT)
+    assert not regraded["passed"] and regraded["failed_assertions"] == [ABSENT]
+    assert lost == Counter({"t-absent": 1}) and not gained
+
+
+def test_regrade_sets_semantic_checked_from_the_scenario():
+    audited = _stored("t-a", DENIED_TEXT)
+    audited.pop("semantic_checked")
+    unchecked = _stored("t-b", DENIED_TEXT)
+    scenarios = {audited["id"]: _scenario(audited, DENIED), unchecked["id"]: _scenario(unchecked)}
+    regraded, _, _ = B.regrade([audited, unchecked], scenarios)
+    assert [record["semantic_checked"] for record in regraded] == [True, False]
+
+
+def test_regrade_rejects_a_rollout_without_a_scenario():
+    record = _stored("t-x", "Done.")
+    with pytest.raises(ValueError, match=record["id"]):
+        B.regrade([record], {"other-0001": {}})
+
+
+@pytest.mark.parametrize("change", [
+    {"template": "t-other"},
+    {"category": "other"},
+    {"trigger": {"kind": "message", "text": "Close out the repair ticket."}},
+], ids=["template", "category", "trigger"])
+def test_regrade_rejects_a_scenario_that_is_not_the_one_the_rollout_ran_on(change):
+    # Scenario ids are positional, so another file version can reuse an id for new content.
+    record = _stored("t-deny", DENIED_TEXT, DENIED)
+    with pytest.raises(ValueError, match=record["id"]):
+        B.regrade([record], {record["id"]: _scenario(record, DENIED) | change})
+
+
+def test_trigger_text_is_what_the_runtime_puts_in_the_user_message():
+    from tholos import prompt
+
+    rendered = {
+        "message": prompt.message_trigger("Add Bird."),
+        "schedule": prompt.schedule_trigger("Sweep the items table."),
+        "follow_up": prompt.follow_up_trigger("Check the items table."),
+        "task": prompt.task_trigger(7, "mira", "Split items", "Copy the rows."),
+    }
+    triggers = [
+        {"kind": "message", "text": "Add Bird."},
+        {"kind": "schedule", "prompt": "Sweep the items table."},
+        {"kind": "follow_up", "note": "Check the items table."},
+        {"kind": "task", "from": "mira", "title": "Split items", "details": "Copy the rows."},
+    ]
+    for trigger in triggers:
+        assert rendered[trigger["kind"]].endswith(B.trigger_text(trigger))
+
+
+def test_load_scenarios_rejects_an_id_repeated_across_files(tmp_path):
+    first, second = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    write_jsonl(first, [{"id": "s-1"}, {"id": "s-2"}])
+    write_jsonl(second, [{"id": "s-3"}, {"id": "s-2"}])
+    assert set(B.load_scenarios([first])) == {"s-1", "s-2"}
+    with pytest.raises(ValueError, match="s-2"):
+        B.load_scenarios([first, second])
+
+
+def test_build_regrade_applies_the_current_checks_before_the_filters(tmp_path, capsys):
+    fixed = _stored("t-deny", DENIED_TEXT, DENIED)
+    broken = _stored("t-absent", "Added fa_109 to flight_approvals as requested.")
+    infra = _stored("t-infra", DENIED_TEXT, DENIED) | {"infra_failed": True}
+    rollouts, first, second, out = (
+        tmp_path / name for name in ["rollouts.jsonl", "a.jsonl", "b.jsonl", "out"])
+    write_jsonl(rollouts, [fixed, broken, infra])
+    write_jsonl(first, [_scenario(fixed, DENIED), _scenario(infra, DENIED)])
+    write_jsonl(second, [_scenario(broken, ABSENT)])
+    assert B.main(["--rollouts", str(rollouts), "--scenarios", str(first), str(second),
+                   "--regrade", "--out-dir", str(out)]) == 0
+    text = capsys.readouterr().out
+    assert re.search(r"^t-deny\s+1\s+0$", text, re.M)
+    assert re.search(r"^t-absent\s+0\s+1$", text, re.M)
+    assert "regraded 2 rollouts: 1 fail->pass, 1 pass->fail" in text
+    assert "infrastructure failures: 1" in text and "t-infra" not in text
+    kept = read_jsonl(out / "sft_train.jsonl") + read_jsonl(out / "sft_val.jsonl")
+    assert [sample["meta"]["id"] for sample in kept] == [fixed["id"]]
+
+
+@pytest.mark.parametrize("flags", [["--regrade"], ["--scenarios", "scenarios.jsonl"]])
+def test_build_regrade_flags_go_together(tmp_path, flags, capsys):
+    with pytest.raises(SystemExit) as exc:
+        B.main(["--rollouts", str(tmp_path / "rollouts.jsonl"), *flags])
+    assert exc.value.code == 2 and "must be used together" in capsys.readouterr().err
+
+
+def test_build_regrade_reports_an_unknown_rollout_id(tmp_path, capsys):
+    record = _stored("t-x", "Done.")
+    rollouts, scenarios = tmp_path / "rollouts.jsonl", tmp_path / "scenarios.jsonl"
+    write_jsonl(rollouts, [record])
+    write_jsonl(scenarios, [{"id": "other-0001"}])
+    with pytest.raises(SystemExit) as exc:
+        B.main(["--rollouts", str(rollouts), "--scenarios", str(scenarios), "--regrade",
+                "--out-dir", str(tmp_path / "out")])
+    assert exc.value.code == 2 and record["id"] in capsys.readouterr().err
+

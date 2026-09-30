@@ -2,12 +2,19 @@
 
 Usage:
   python train/build.py --rollouts rollouts.jsonl --out-dir /kaggle/working
+  python train/build.py --rollouts rollouts.jsonl --scenarios scenarios.jsonl --regrade
 
 Keeps a rollout when: it passed the semantic audit, it has zero invalid outputs, no call repeats
 back to back, no call appears more than twice, every thought is at most 240
 characters, and it ends with finish. Near-duplicate trajectories inside a
 template are dropped. The val split gets whole templates, about 8 percent of
 kept trajectories.
+
+--regrade first recomputes the training-check failures of each rollout with the current
+checks.py, using the scenario with the same id from the --scenarios files. Runtime failures
+stay as recorded. Use it for rollouts generated before a grading fix. Ids repeat across
+scenario file versions, so a scenario whose template, category or trigger text differs from
+its rollout is an error.
 """
 
 import argparse
@@ -17,6 +24,8 @@ import sys
 from collections import Counter, defaultdict
 from difflib import SequenceMatcher
 from pathlib import Path
+
+from checks import failures
 
 from tholos.workspace import dumps
 
@@ -139,13 +148,91 @@ def write_split(results, path):
             file.write(dumps(record) + "\n")
 
 
+def load_scenarios(paths):
+    """Map scenario id to scenario across JSONL files. An id may appear only once."""
+    scenarios = {}
+    for path in paths:
+        with open(path, encoding="utf-8") as file:
+            for line in file:
+                if line.strip():
+                    scenario = json.loads(line)
+                    if scenario["id"] in scenarios:
+                        raise ValueError(f"duplicate scenario id {scenario['id']}")
+                    scenarios[scenario["id"]] = scenario
+    return scenarios
+
+
+def trigger_text(trigger):
+    """The part of the trigger that the runtime copies verbatim into the first user message."""
+    kind = trigger["kind"]
+    if kind == "task":
+        return f"{trigger['title']}\n{trigger.get('details', '')}"
+    return trigger[{"message": "text", "schedule": "prompt", "follow_up": "note"}[kind]]
+
+
+def matches_rollout(scenario, result):
+    """Is this the scenario the rollout ran on?
+
+    Ids are positional and repeat across scenario file versions, so compare what the rollout
+    records: its template, its category and the trigger text in its first user message.
+    """
+    opening = next((m["content"] for m in result["messages"] if m["role"] == "user"), "")
+    return (scenario["template"] == result["template"]
+            and scenario["category"] == result["category"]
+            and trigger_text(scenario["trigger"]) in opening)
+
+
+def regrade(results, scenarios):
+    """Recompute training-check failures with the current checks.
+
+    Runtime failures (entries with a "type" key) come from the bench's final-state evaluation
+    and cannot be recomputed from the messages, so they stay as recorded. Returns the new
+    records and, per template, how many went from fail to pass (gained) and from pass to
+    fail (lost).
+    """
+    regraded, gained, lost = [], Counter(), Counter()
+    for result in results:
+        scenario = scenarios.get(result["id"])
+        if scenario is None:
+            raise ValueError(f"no scenario for rollout {result['id']}")
+        if not matches_rollout(scenario, result):
+            raise ValueError(f"scenario {result['id']} differs from its rollout in template, "
+                             "category or trigger text")
+        failed = [entry for entry in result["failed_assertions"] if "type" in entry]
+        failed += failures(scenario, result["messages"])
+        passed = not failed
+        if passed and not result["passed"]:
+            gained[result["template"]] += 1
+        elif result["passed"] and not passed:
+            lost[result["template"]] += 1
+        regraded.append({**result, "passed": passed, "failed_assertions": failed,
+                         "semantic_checked": bool(scenario.get("checks"))})
+    return regraded, gained, lost
+
+
+def print_regrade(total, gained, lost):
+    if gained or lost:
+        print("Regrade, records changed per template:")
+        print(f"{'':<20} {'fail->pass':>10} {'pass->fail':>10}")
+        for name in sorted(set(gained) | set(lost)):
+            print(f"{name:<20} {gained[name]:>10} {lost[name]:>10}")
+    print(f"regraded {total} rollouts: {sum(gained.values())} fail->pass, "
+          f"{sum(lost.values())} pass->fail")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Build SFT train/val files from rollouts.")
     parser.add_argument("--rollouts", required=True)
     parser.add_argument("--out-dir", default=".")
     parser.add_argument("--val-frac", type=float, default=0.08)
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--scenarios", nargs="+",
+                        help="scenario JSONL files holding each rollout's checks, for --regrade")
+    parser.add_argument("--regrade", action="store_true",
+                        help="recompute training-check failures with the current checks")
     args = parser.parse_args(argv)
+    if bool(args.scenarios) != args.regrade:
+        parser.error("--scenarios and --regrade must be used together")
 
     results = [json.loads(line) for line in
                Path(args.rollouts).read_text(encoding="utf-8").splitlines()
@@ -157,6 +244,12 @@ def main(argv=None):
             by_id[result["id"]] = result
     infra_failed = sum(bool(result.get("infra_failed")) for result in by_id.values())
     unique = [result for result in by_id.values() if not result.get("infra_failed")]
+    if args.regrade:
+        try:
+            unique, gained, lost = regrade(unique, load_scenarios(args.scenarios))
+        except ValueError as exc:
+            parser.error(str(exc))
+        print_regrade(len(unique), gained, lost)
 
     kept, reasons = [], Counter()
     for result in unique:
