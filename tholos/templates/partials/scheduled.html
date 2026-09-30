@@ -1,0 +1,19 @@
+{% if not schedules and not follow_ups %}
+<p class="empty">Nothing is scheduled. Add a schedule on an agent's page.</p>
+{% endif %}
+{% for schedule in schedules %}
+<div class="card board-card">
+  <p><a href="/agents/{{ schedule.agent|urlquote }}">{{ schedule.agent }}</a></p>
+  <p>{{ schedule.prompt }}</p>
+  <p class="small muted"><svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>
+    {{ schedule.every }} · next {{ schedule.next_at|localtime }}</p>
+</div>
+{% endfor %}
+{% for run in follow_ups %}
+<div class="card board-card">
+  <p><a href="/agents/{{ run.agent|urlquote }}">{{ run.agent }}</a></p>
+  <p>{{ run.trigger }}</p>
+  <p class="small muted"><svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>
+    Follow-up · due {{ run.due_at|localtime }}</p>
+</div>
+{% endfor %}

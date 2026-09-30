@@ -1,0 +1,34 @@
+{
+  "id": "add-004",
+  "category": "table_add",
+  "template": "b-add-no-dup",
+  "agent": "Registrar",
+  "workspace": {
+    "agents": [
+      {"name": "Registrar", "role": "You register new students and skip ones already on the list.", "tools": ["table_read", "table_add", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "students", "columns": ["name", "grade", "email"], "rows": [
+        {"name": "Ada Lovelace", "grade": "10", "email": "ada@s.test"},
+        {"name": "Bo Tan", "grade": "11", "email": "bo@s.test"},
+        {"name": "Cora Ellis", "grade": "10", "email": "cora@s.test"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Enroll new students", "details": "Enroll these students, but do not duplicate anyone already on the list: Ada Lovelace (already there), plus Finn Osei in grade 12 with email finn@s.test, and Greta Voss in grade 10 with email greta@s.test."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "students", "query": null, "limit": null}},
+    {"tool": "table_add", "args": {"table": "students", "rows": [
+      {"name": "Finn Osei", "grade": "12", "email": "finn@s.test"},
+      {"name": "Greta Voss", "grade": "10", "email": "greta@s.test"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Enrolled Finn Osei and Greta Voss."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "students", "count": 5},
+    {"type": "row", "table": "students", "where": {"name": "Finn Osei"}, "has": {"grade": "12"}},
+    {"type": "row", "table": "students", "where": {"name": "Greta Voss"}, "has": {"grade": "10"}}
+  ],
+  "max_steps": 5,
+  "about": "Adds only new students and avoids duplicating an existing name."
+}

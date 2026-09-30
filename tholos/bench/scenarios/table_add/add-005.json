@@ -1,0 +1,29 @@
+{
+  "id": "add-005",
+  "category": "table_add",
+  "template": "b-add-rows2",
+  "agent": "Cataloger",
+  "workspace": {
+    "agents": [
+      {"name": "Cataloger", "role": "You catalog new items in the archive table.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "archive", "columns": ["box", "title", "year", "format"], "rows": [
+        {"box": "A1", "title": "field notes 1998", "year": 1998, "format": "paper"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Catalog a tape", "details": "Add a new item: box B3, title 'interview with R. Chen', year 2001, format audio."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "archive", "rows": [
+      {"box": "B3", "title": "interview with R. Chen", "year": 2001, "format": "audio"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Cataloged the interview tape."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "archive", "count": 2},
+    {"type": "row", "table": "archive", "where": {"box": "B3"}, "has": {"year": 2001, "format": "audio"}}
+  ],
+  "max_steps": 3,
+  "about": "Adds an archive item with a numeric year and string fields."
+}

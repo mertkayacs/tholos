@@ -1,0 +1,26 @@
+{
+  "id": "create-005",
+  "category": "table_create",
+  "template": "b-create-table2",
+  "agent": "Logger",
+  "workspace": {
+    "agents": [
+      {"name": "Logger", "role": "You create new tables to log maintenance and fill them.", "tools": ["table_create", "table_add", "finish"], "max_steps": 5}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Maintenance log", "details": "Create a table called 'maintenance' with columns: asset, task, done, next_due. Add: asset 'boiler', task 'filter change', done 2024-09-15, next_due 2024-12-15."},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "maintenance", "columns": ["asset", "task", "done", "next_due"]}},
+    {"tool": "table_add", "args": {"table": "maintenance", "rows": [
+      {"asset": "boiler", "task": "filter change", "done": "2024-09-15", "next_due": "2024-12-15"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Created the maintenance table with one entry."}}
+  ],
+  "expect": [
+    {"type": "table_exists", "table": "maintenance", "columns": ["asset", "task", "done", "next_due"]},
+    {"type": "rows", "table": "maintenance", "count": 1},
+    {"type": "row", "table": "maintenance", "where": {"asset": "boiler"}, "has": {"task": "filter change"}}
+  ],
+  "max_steps": 5,
+  "about": "Creates a maintenance log table and fills it with one entry."
+}

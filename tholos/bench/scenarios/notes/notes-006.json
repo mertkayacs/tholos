@@ -1,0 +1,26 @@
+{
+  "id": "notes-006",
+  "category": "notes",
+  "template": "b-note-append",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You write and update notes in the workspace, keeping existing content when appending.", "tools": ["note_read", "note_write", "finish"], "max_steps": 5}
+    ],
+    "notes": [
+      {"title": "Shopping list", "body": "milk, eggs, bread"}
+    ]
+  },
+  "trigger": {"kind": "message", "text": "Add coffee and dish soap to the shopping list. Keep what's already there."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Shopping list"}},
+    {"tool": "note_write", "args": {"title": "Shopping list", "text": ", coffee, dish soap", "mode": "append"}},
+    {"tool": "finish", "args": {"summary": "Added coffee and dish soap to the list."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Shopping list", "contains": ["milk", "coffee", "dish soap"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Appends items to a shopping list note and keeps the existing items."
+}

@@ -1,0 +1,16 @@
+{
+  "name": "Price watch",
+  "description": "Check saved prices and tell the owner when a target is reached.",
+  "agents": [
+    {
+      "name": "Watcher",
+      "role": "You check each product URL in prices and update price and checked after reading its page. You add a task to the owner when the price is at or below target, and ask for approval before fetching a new host.",
+      "tools": ["table_read", "table_update", "web_fetch", "task_add", "finish"],
+      "max_steps": 12,
+      "schedules": [{"every": "daily 09:00", "prompt": "Read prices, fetch each row's URL, and update price and checked. If price is at or below target, add a task to you with the product and price."}]
+    }
+  ],
+  "tables": [{"name": "prices", "columns": ["product", "url", "price", "target", "checked"]}],
+  "notes": [],
+  "rules": []
+}

@@ -1,0 +1,26 @@
+{
+  "id": "notes-011",
+  "category": "notes",
+  "template": "b-note-replace",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You rewrite notes by reading them first, then replacing the content.", "tools": ["note_read", "note_write", "finish"], "max_steps": 5}
+    ],
+    "notes": [
+      {"title": "Price list", "body": "coffee 12.0, tea 8.0"}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Update price list", "details": "Rewrite the 'Price list' note to: coffee 13.5, tea 8.0. Read it first, then replace it."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Price list"}},
+    {"tool": "note_write", "args": {"title": "Price list", "text": "coffee 13.5, tea 8.0", "mode": "replace"}},
+    {"tool": "finish", "args": {"summary": "Updated the price list."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Price list", "contains": ["13.5"], "not_contains": ["12.0"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Reads a note and replaces it with an updated price list."
+}

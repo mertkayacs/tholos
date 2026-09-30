@@ -1,0 +1,30 @@
+<div class="page-head">
+  <h1>Run #{{ run.id }}</h1>
+  {% if run.status == "running" %}
+  <span class="badge working"><span class="dot" aria-hidden="true"></span>Working</span>
+  {% elif run.status == "waiting" %}
+  <span class="badge waiting"><svg class="icon" aria-hidden="true"><use href="#i-hand"></use></svg>Waiting</span>
+  {% elif run.status == "done" %}
+  <span class="badge done"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>Done</span>
+  {% elif run.status == "failed" %}
+  <span class="badge failed"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"></use></svg>Failed</span>
+  {% else %}
+  <span class="badge">{{ run.status }}</span>
+  {% endif %}
+</div>
+<div class="meta-row" style="margin-bottom: 24px">
+  <span><a href="/agents/{{ run.agent|urlquote }}">{{ run.agent }}</a> · {{ run.trigger_kind }}</span>
+  <span class="num">Tokens in {{ run.tokens_in }} · out {{ run.tokens_out }}</span>
+  {% if duration %}<span class="num">{{ duration }}</span>{% endif %}
+  <span class="num">{{ run.step_count }} steps</span>
+  {% if run.error %}<span style="color: var(--danger)">{{ run.error }}</span>{% endif %}
+  <span class="spacer" style="flex: 1"></span>
+  {% if run.status in ["queued", "running", "waiting"] %}
+  <form hx-post="/runs/{{ run.id }}/stop" hx-target="#run-header" hx-confirm="Stop this run?" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn secondary" type="submit">
+      <svg class="icon" aria-hidden="true"><use href="#i-square"></use></svg>Stop
+    </button>
+  </form>
+  {% endif %}
+</div>

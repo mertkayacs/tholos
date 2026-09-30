@@ -1,0 +1,27 @@
+{
+  "id": "approval-007",
+  "category": "approval",
+  "template": "b-approval-ok2",
+  "agent": "Builder",
+  "workspace": {
+    "agents": [
+      {"name": "Builder", "role": "You create tables, but creating them needs the owner's approval.", "tools": ["table_create", "finish"], "max_steps": 4}
+    ],
+    "rules": [
+      {"agent": "*", "tool": "table_create", "match": "*", "decision": "ask"}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Create a wishlist table", "details": "Create a table called 'wishlist' with columns: item, price, priority."},
+  "respond": {"approve": true},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "wishlist", "columns": ["item", "price", "priority"]}},
+    {"tool": "finish", "args": {"summary": "Created the wishlist table."}}
+  ],
+  "expect": [
+    {"type": "approval", "tool": "table_create"},
+    {"type": "table_exists", "table": "wishlist", "columns": ["item", "price", "priority"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 4,
+  "about": "Creates a table after the owner approves the table_create."
+}

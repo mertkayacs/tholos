@@ -1,0 +1,25 @@
+{
+  "id": "notes-007",
+  "category": "notes",
+  "template": "b-note-read",
+  "agent": "Scribe",
+  "workspace": {
+    "agents": [
+      {"name": "Scribe", "role": "You read notes and report what they say.", "tools": ["note_read", "finish"], "max_steps": 3}
+    ],
+    "notes": [
+      {"title": "Wifi details", "body": "Network: HomeNet. Password: ridge-wood-42."}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Wifi password", "details": "What is the wifi password? Read the 'Wifi details' note."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Wifi details"}},
+    {"tool": "finish", "args": {"summary": "The wifi password is ridge-wood-42."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["ridge-wood-42"]}
+  ],
+  "max_steps": 3,
+  "about": "Reads a note and reports the wifi password from it."
+}

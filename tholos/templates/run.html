@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Run #{{ run.id }} · Tholos{% endblock %}
+{% block content %}
+<div id="run-header">
+  {% include "partials/run_header.html" %}
+</div>
+
+<h2>Trigger</h2>
+<div class="card"><p style="white-space: pre-wrap">{{ run.trigger }}</p></div>
+
+<h2>Steps</h2>
+{% if not run.steps %}<p class="empty">No steps yet.</p>{% endif %}
+<ol class="timeline">
+  {% for step in run.steps %}
+  <li>
+    <p class="thought">{{ step.thought }}</p>
+    <p class="mono">{{ step.tool }}({{ step.args | tojson }})</p>
+    <details>
+      <summary>Result{% if step.status != "ok" %} ({{ step.status }}){% endif %} · {{ step.ms }} ms</summary>
+      <pre>{{ step.result | tojson(indent=2) }}</pre>
+    </details>
+  </li>
+  {% endfor %}
+</ol>
+{% endblock %}

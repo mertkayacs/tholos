@@ -1,0 +1,11 @@
+<form hx-post="/notes" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="form-row">
+    <div class="field" style="flex: 1">
+      <label for="note-title">Title</label>
+      <input type="text" id="note-title" name="title" required>
+      {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    </div>
+    <button class="btn primary" type="submit">Create note</button>
+  </div>
+</form>

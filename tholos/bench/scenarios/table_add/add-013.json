@@ -1,0 +1,29 @@
+{
+  "id": "add-013",
+  "category": "table_add",
+  "template": "b-add-rows4",
+  "agent": "Logger",
+  "workspace": {
+    "agents": [
+      {"name": "Logger", "role": "You add new entries to the workout log.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "workouts", "columns": ["date", "activity", "minutes"], "rows": [
+        {"date": "2024-09-10", "activity": "run", "minutes": 30}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "message", "text": "Log a swim today, 45 minutes."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "workouts", "rows": [
+      {"date": "2024-09-11", "activity": "swim", "minutes": 45}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Logged the swim."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "workouts", "count": 2},
+    {"type": "row", "table": "workouts", "where": {"activity": "swim"}, "has": {"minutes": 45}}
+  ],
+  "max_steps": 3,
+  "about": "Adds a workout entry with activity and numeric duration."
+}

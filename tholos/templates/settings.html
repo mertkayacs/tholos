@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Settings · Tholos{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Settings</h1></div>
+
+<h2>Models</h2>
+<div class="card" id="models-wrap">
+  {% include "partials/settings_models.html" %}
+</div>
+
+<h2>Rules</h2>
+<div class="card" id="rules-wrap">
+  {% include "partials/settings_rules.html" %}
+</div>
+
+<h2>Starter teams</h2>
+<div class="card" id="teams-wrap">
+  {% include "partials/settings_teams.html" %}
+</div>
+
+<h2>Telegram</h2>
+<div class="card" id="telegram-wrap">
+  {% include "partials/settings_telegram.html" %}
+</div>
+
+{% if access_token %}
+<h2>Access token</h2>
+<div class="card">
+  <p>This Tholos is bound to a non-loopback address, so browsers need this token to log in.</p>
+  <pre>{{ access_token }}</pre>
+</div>
+{% endif %}
+{% endblock %}

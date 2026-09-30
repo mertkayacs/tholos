@@ -1,0 +1,11 @@
+{% for event in events %}
+<tr>
+  <td class="num" style="white-space: nowrap">{{ event.at|localtime }}</td>
+  <td>{{ event.actor }}</td>
+  <td>{{ event.kind }}</td>
+  <td>{{ event.text }}</td>
+</tr>
+{% endfor %}
+{% if not events %}
+<tr><td colspan="4" class="muted">Nothing has happened yet.</td></tr>
+{% endif %}

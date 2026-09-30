@@ -1,0 +1,74 @@
+{% if conflict %}
+<div class="conflict" role="alert">
+  <span>This row changed while you were editing. The current value is "{{ conflict.value }}".</span>
+  <button class="btn secondary small" hx-get="/partials/tables/{{ sheet.name|urlquote }}/grid"
+          hx-target="#grid-wrap">
+    <svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"></use></svg>Reload
+  </button>
+</div>
+{% endif %}
+{% if error %}
+<div class="conflict" role="alert">
+  <span>{{ error }}</span>
+  <button class="btn secondary small" hx-get="/partials/tables/{{ sheet.name|urlquote }}/grid"
+          hx-target="#grid-wrap">
+    <svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"></use></svg>Reload
+  </button>
+</div>
+{% endif %}
+<div class="grid-wrap">
+  <table class="grid">
+    <thead>
+      <tr>
+        <th class="rownum" scope="col">#</th>
+        {% for column in sheet.columns %}<th scope="col">{{ column }}</th>{% endfor %}
+        <th scope="col"><span class="muted">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in sheet.rows %}
+      <tr>
+        <td class="rownum num">{{ loop.index }}</td>
+        {% for column in sheet.columns %}
+        <td{% if column in totals %} class="num"{% endif %}>
+          <form class="cell-form" hx-put="/tables/{{ sheet.name|urlquote }}/rows/{{ row.id }}"
+                hx-target="#grid-wrap">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <input type="hidden" name="expected_version" value="{{ row.version }}">
+            <input type="hidden" name="column" value="{{ column }}">
+            <input class="cell" name="value" value="{{ row.data[column] }}"
+                   aria-label="{{ column }}, row {{ loop.index }}"{% if column in totals %} style="text-align: right"{% endif %}>
+          </form>
+        </td>
+        {% endfor %}
+        <td>
+          <form hx-post="/tables/{{ sheet.name|urlquote }}/rows/{{ row.id }}/delete"
+                hx-target="#grid-wrap" hx-confirm="Delete this row?" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}">
+            <button class="btn quiet small danger" type="submit" aria-label="Delete row {{ loop.index }}">
+              <svg class="icon" aria-hidden="true"><use href="#i-trash-2"></use></svg>
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% if totals %}
+    <tfoot>
+      <tr>
+        <td class="rownum"></td>
+        {% for column in sheet.columns %}
+        <td>{% if column in totals %}<span class="num">{{ "%g"|format(totals[column]) }}</span>{% endif %}</td>
+        {% endfor %}
+        <td></td>
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</div>
+<form hx-post="/tables/{{ sheet.name|urlquote }}/rows" hx-target="#grid-wrap" style="margin-top: 12px">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <button class="btn secondary" type="submit">
+    <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>Add row
+  </button>
+</form>

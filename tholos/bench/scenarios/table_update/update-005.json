@@ -1,0 +1,34 @@
+{
+  "id": "update-005",
+  "category": "table_update",
+  "template": "b-update-status2",
+  "agent": "Ranger",
+  "workspace": {
+    "agents": [
+      {"name": "Ranger", "role": "You update plant health by reading first and changing only wilting plants.", "tools": ["table_read", "table_update", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "plants", "columns": ["plot", "species", "health"], "rows": [
+        {"plot": "A1", "species": "tomato", "health": "good"},
+        {"plot": "A2", "species": "basil", "health": "good"},
+        {"plot": "A3", "species": "squash", "health": "wilting"},
+        {"plot": "B1", "species": "pepper", "health": "good"},
+        {"plot": "B2", "species": "kale", "health": "wilting"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Water the wilting", "details": "Mark every wilting plant as watered. Healthy plants stay as they are."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "plants", "query": "health:wilting", "limit": null}},
+    {"tool": "table_update", "args": {"table": "plants", "row": 3, "values": {"plot": null, "species": null, "health": "good"}}},
+    {"tool": "table_update", "args": {"table": "plants", "row": 5, "values": {"plot": null, "species": null, "health": "good"}}},
+    {"tool": "finish", "args": {"summary": "Marked the wilting plants as watered."}}
+  ],
+  "expect": [
+    {"type": "row", "table": "plants", "where": {"plot": "A3"}, "has": {"health": "good"}},
+    {"type": "row", "table": "plants", "where": {"plot": "B2"}, "has": {"health": "good"}},
+    {"type": "row", "table": "plants", "where": {"plot": "A1"}, "has": {"health": "good"}}
+  ],
+  "max_steps": 5,
+  "about": "Updates only wilting plants to a healthy state."
+}

@@ -1,0 +1,34 @@
+{
+  "id": "read-001",
+  "category": "table_read_answer",
+  "template": "b-read-count",
+  "agent": "Scout",
+  "workspace": {
+    "agents": [
+      {"name": "Scout", "role": "You read the workspace tables and report short factual answers to the owner.", "tools": ["table_read", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "leads", "columns": ["title", "url", "status", "source"], "rows": [
+        {"title": "Willowfield supply inquiry", "url": "willowfield.example", "status": "new", "source": "email"},
+        {"title": "Harbor logistics quote", "url": "harbor.example", "status": "new", "source": "web"},
+        {"title": "Maple street bakery", "url": "maple.example", "status": "contacted", "source": "phone"},
+        {"title": "Cedar roofing supply", "url": "cedar.example", "status": "new", "source": "email"},
+        {"title": "Blue lake marina", "url": "bluelake.example", "status": "contacted", "source": "web"},
+        {"title": "Ironwood tools", "url": "ironwood.example", "status": "won", "source": "phone"},
+        {"title": "Pine and co", "url": "pine.example", "status": "lost", "source": "email"},
+        {"title": "Juniper analytics", "url": "juniper.example", "status": "contacted", "source": "web"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Count new leads", "details": "How many leads have status new?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "leads", "query": "status:new", "limit": null}},
+    {"tool": "finish", "args": {"summary": "There are 3 new leads."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["3 new leads"]}
+  ],
+  "max_steps": 3,
+  "about": "Reads a leads table and reports the count of new leads."
+}

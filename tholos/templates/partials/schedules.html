@@ -1,0 +1,59 @@
+{% if not schedules %}
+<p class="muted">No schedules. Add one below, for example "30m", "2h", "daily 09:00", or "weekdays 08:30".</p>
+{% endif %}
+{% for schedule in schedules %}
+<form hx-post="/schedules/{{ schedule.id }}/edit" hx-target="#schedules-wrap" class="card" style="background: var(--sunken)">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="form-row">
+    <div class="field" style="max-width: 180px">
+      <label for="sched-every-{{ schedule.id }}">Every</label>
+      <input type="text" id="sched-every-{{ schedule.id }}" name="every" value="{{ schedule.every }}" required>
+      {% if error and error_id == schedule.id|string %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    </div>
+    <div class="field" style="flex: 1">
+      <label for="sched-prompt-{{ schedule.id }}">Prompt</label>
+      <input type="text" id="sched-prompt-{{ schedule.id }}" name="prompt" value="{{ schedule.prompt }}" required>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" name="enabled" value="1"{% if schedule.enabled %} checked{% endif %}
+        style="width: 16px; height: 16px; accent-color: var(--ink)"> Enabled</label>
+      <p class="hint num">Next {{ schedule.next_at|localtime }}</p>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn secondary small" type="submit">Save</button>
+    <button class="btn quiet small" type="submit" form="run-sched-{{ schedule.id }}">
+      <svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg>Run now</button>
+    <button class="btn quiet small danger" type="submit" form="del-sched-{{ schedule.id }}">
+      <svg class="icon" aria-hidden="true"><use href="#i-trash-2"></use></svg>Delete</button>
+  </div>
+</form>
+<form id="run-sched-{{ schedule.id }}" hx-post="/schedules/{{ schedule.id }}/run" hx-target="#schedules-wrap" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+</form>
+<form id="del-sched-{{ schedule.id }}" hx-post="/schedules/{{ schedule.id }}/delete" hx-target="#schedules-wrap"
+      hx-confirm="Delete this schedule?" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+</form>
+{% endfor %}
+<h3>Add a schedule</h3>
+<form hx-post="/agents/{{ agent.name|urlquote }}/schedules" hx-target="#schedules-wrap" data-reset>
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="form-row">
+    <div class="field" style="max-width: 180px">
+      <label for="sched-every-new">Every</label>
+      <input type="text" id="sched-every-new" name="every" value="{{ values.every or '' }}"
+             placeholder="30m or daily 09:00" required>
+      {% if error and error_id == "add" %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    </div>
+    <div class="field" style="flex: 1">
+      <label for="sched-prompt-new">Prompt</label>
+      <input type="text" id="sched-prompt-new" name="prompt" value="{{ values.prompt or '' }}" required>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" name="enabled" value="1" checked
+        style="width: 16px; height: 16px; accent-color: var(--ink)"> Enabled</label>
+    </div>
+    <button class="btn primary" type="submit">Add schedule</button>
+  </div>
+</form>

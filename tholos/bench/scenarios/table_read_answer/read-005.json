@@ -1,0 +1,41 @@
+{
+  "id": "read-005",
+  "category": "table_read_answer",
+  "template": "b-read-count2",
+  "agent": "Surveyor",
+  "workspace": {
+    "agents": [
+      {"name": "Surveyor", "role": "You read survey results and report counts and simple facts.", "tools": ["table_read", "finish"], "max_steps": 4}
+    ],
+    "tables": [
+      {"name": "responses", "columns": ["respondent", "rating", "comment"], "rows": [
+        {"respondent": "A", "rating": 5, "comment": "fast"},
+        {"respondent": "B", "rating": 4, "comment": "clear"},
+        {"respondent": "C", "rating": 3, "comment": "ok"},
+        {"respondent": "D", "rating": 5, "comment": "great"},
+        {"respondent": "E", "rating": 2, "comment": "slow"},
+        {"respondent": "F", "rating": 1, "comment": "broken"},
+        {"respondent": "G", "rating": 5, "comment": "love it"},
+        {"respondent": "H", "rating": 4, "comment": "good"},
+        {"respondent": "I", "rating": 3, "comment": "fine"},
+        {"respondent": "J", "rating": 5, "comment": "best"},
+        {"respondent": "K", "rating": 2, "comment": "meh"},
+        {"respondent": "L", "rating": 5, "comment": "smooth"},
+        {"respondent": "M", "rating": 4, "comment": "nice"},
+        {"respondent": "N", "rating": 1, "comment": "awful"},
+        {"respondent": "O", "rating": 5, "comment": "perfect"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Top rating", "details": "How many responses gave a rating of 5?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "responses", "query": "rating:5", "limit": null}},
+    {"tool": "finish", "args": {"summary": "6 responses gave a rating of 5."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["6 responses"]}
+  ],
+  "max_steps": 4,
+  "about": "Reads survey responses and counts how many gave the top rating."
+}

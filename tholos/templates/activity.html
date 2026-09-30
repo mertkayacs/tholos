@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Activity · Tholos{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Activity</h1></div>
+<p class="muted">The latest 200 events, newest first. This page updates live.</p>
+<div class="grid-wrap" hx-ext="sse" sse-connect="/events">
+  <table class="grid">
+    <thead>
+      <tr><th scope="col">Time</th><th scope="col">Actor</th><th scope="col">Kind</th><th scope="col">Event</th></tr>
+    </thead>
+    <tbody hx-get="/partials/activity" hx-trigger="sse:change throttle:1s">
+      {% include "partials/activity_rows.html" %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% if not memories %}
+<p class="muted">No memories yet. Agents add their own with the remember tool; you can add one below.</p>
+{% endif %}
+{% for memory in memories %}
+<form hx-post="/memories/{{ memory.id }}/edit" hx-target="#memories-wrap" class="form-row" style="margin-bottom: 8px">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="field" style="flex: 1; margin-bottom: 0">
+    <label for="mem-{{ memory.id }}" class="small muted">{{ memory.source }} · {{ memory.created_at|localtime }}</label>
+    <input type="text" id="mem-{{ memory.id }}" name="text" value="{{ memory.text }}" maxlength="200" required>
+  </div>
+  <button class="btn secondary small" type="submit">Save</button>
+  <button class="btn quiet small danger" type="submit" form="del-mem-{{ memory.id }}" aria-label="Delete memory">
+    <svg class="icon" aria-hidden="true"><use href="#i-trash-2"></use></svg>
+  </button>
+</form>
+<form id="del-mem-{{ memory.id }}" hx-post="/memories/{{ memory.id }}/delete" hx-target="#memories-wrap"
+      hx-confirm="Delete this memory?" class="inline-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+</form>
+{% endfor %}
+<form hx-post="/agents/{{ agent.name|urlquote }}/memories" hx-target="#memories-wrap" data-reset class="form-row">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="field" style="flex: 1; margin-bottom: 0">
+    <label for="mem-new">Add a memory</label>
+    <input type="text" id="mem-new" name="text" maxlength="200" required>
+  </div>
+  <button class="btn primary" type="submit">Add</button>
+</form>

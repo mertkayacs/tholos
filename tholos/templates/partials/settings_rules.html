@@ -1,0 +1,47 @@
+{% if rule_error %}<p class="error" role="alert" style="color: var(--danger)">{{ rule_error }}</p>{% endif %}
+{% if not rules %}
+<p class="muted">No rules. Without a rule, everything is allowed except web_fetch, which asks.</p>
+{% endif %}
+{% for rule in rules %}
+<div class="form-row" style="align-items: center; margin-bottom: 8px">
+  <p class="mono small" style="margin: 0; flex: 1">
+    {{ rule.agent }} · {{ rule.tool }} · {{ rule.match }} · <strong>{{ rule.decision }}</strong></p>
+  <form hx-post="/settings/rules/{{ rule.id }}/delete" hx-target="#rules-wrap"
+        hx-confirm="Delete this rule?" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn quiet small danger" type="submit" aria-label="Delete rule {{ rule.id }}">
+      <svg class="icon" aria-hidden="true"><use href="#i-trash-2"></use></svg>
+    </button>
+  </form>
+</div>
+{% endfor %}
+<h3>Add a rule</h3>
+<form hx-post="/settings/rules" hx-target="#rules-wrap" method="post" data-reset>
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <div class="form-row">
+    <div class="field">
+      <label for="rule-agent">Agent</label>
+      <input type="text" id="rule-agent" name="agent" placeholder="*">
+    </div>
+    <div class="field">
+      <label for="rule-tool">Tool</label>
+      <select id="rule-tool" name="tool">
+        {% for tool in tool_names %}<option value="{{ tool }}">{{ tool }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="rule-match">Match</label>
+      <input type="text" id="rule-match" name="match" placeholder="*">
+      <p class="hint">The target: a table, note, host, or agent name. * matches all.</p>
+    </div>
+    <div class="field">
+      <label for="rule-decision">Decision</label>
+      <select id="rule-decision" name="decision">
+        <option value="allow">allow</option>
+        <option value="ask">ask</option>
+        <option value="deny">deny</option>
+      </select>
+    </div>
+    <button class="btn primary" type="submit">Add rule</button>
+  </div>
+</form>

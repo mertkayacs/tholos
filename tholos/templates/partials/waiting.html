@@ -1,0 +1,35 @@
+{% if not waiting %}
+<p class="empty">Nothing needs your decision.</p>
+{% endif %}
+{% for card in waiting %}
+<div class="card wait board-card">
+  {% if card.kind == "approve" %}
+  <p><strong>{{ card.agent }}</strong> wants to run <strong>{{ card.tool }}</strong>.</p>
+  <pre>{{ card.tool }} {{ card.target }}
+{{ card.args_json }}</pre>
+  {% if card.preview %}<p class="small muted">{{ card.preview }}</p>{% endif %}
+  <form hx-post="/approvals/{{ card.id }}/decide" hx-target="#waiting-cards" class="actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn primary small" type="submit" name="action" value="approve">Approve</button>
+    <button class="btn secondary small danger" type="submit" name="action" value="deny">Deny</button>
+    <button class="btn quiet small" type="submit" name="action" value="always">Always allow this</button>
+  </form>
+  {% else %}
+  <p><strong>{{ card.agent }}</strong> asks:</p>
+  <p>{{ card.preview }}</p>
+  <form hx-post="/approvals/{{ card.id }}/answer" hx-target="#waiting-cards">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="field">
+      <label for="answer-{{ card.id }}">Your answer</label>
+      <textarea id="answer-{{ card.id }}" name="text" required></textarea>
+    </div>
+    <div class="actions">
+      <button class="btn primary small" type="submit">
+        <svg class="icon" aria-hidden="true"><use href="#i-send"></use></svg>Send answer
+      </button>
+    </div>
+  </form>
+  {% endif %}
+  <p class="small muted">{{ card.created_at|localtime }}</p>
+</div>
+{% endfor %}

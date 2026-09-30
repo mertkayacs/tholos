@@ -1,0 +1,29 @@
+{
+  "id": "add-014",
+  "category": "table_add",
+  "template": "b-add-rows4",
+  "agent": "Registrar",
+  "workspace": {
+    "agents": [
+      {"name": "Registrar", "role": "You add new guests to the hotel ledger.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "guests", "columns": ["name", "room", "nights", "status"], "rows": [
+        {"name": "Alma Reyes", "room": "201", "nights": 3, "status": "checked in"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Check in guest", "details": "Check in 'Bruno Costa' to room 304 for 2 nights."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "guests", "rows": [
+      {"name": "Bruno Costa", "room": "304", "nights": 2, "status": "checked in"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Checked in Bruno Costa."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "guests", "count": 2},
+    {"type": "row", "table": "guests", "where": {"name": "Bruno Costa"}, "has": {"room": "304"}}
+  ],
+  "max_steps": 3,
+  "about": "Adds a guest with room, nights, and status."
+}

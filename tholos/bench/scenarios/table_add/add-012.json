@@ -1,0 +1,29 @@
+{
+  "id": "add-012",
+  "category": "table_add",
+  "template": "b-add-rows4",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You add new members to the club table.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "members", "columns": ["name", "joined", "dues"], "rows": [
+        {"name": "Nora Field", "joined": "2024-03", "dues": "paid"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Add member", "details": "Add member 'Victor Hale', joined 2024-09, dues unpaid."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "members", "rows": [
+      {"name": "Victor Hale", "joined": "2024-09", "dues": "unpaid"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Added Victor Hale."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "members", "count": 2},
+    {"type": "row", "table": "members", "where": {"name": "Victor Hale"}, "has": {"dues": "unpaid"}}
+  ],
+  "max_steps": 3,
+  "about": "Adds a club member with joined date and dues status."
+}

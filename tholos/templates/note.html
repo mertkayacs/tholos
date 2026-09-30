@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ note.title }} · Tholos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ note.title }}</h1>
+  <span class="small muted">version {{ note.version }} · {{ note.updated_by }} ·
+    <span class="num">{{ note.updated_at|localtime }}</span></span>
+</div>
+<div class="card note-body">
+  {{ note.body|md|safe }}
+</div>
+<h2>Edit</h2>
+<div class="card" id="note-editor-wrap">
+  {% include "partials/note_editor.html" %}
+</div>
+<h2>Recent versions</h2>
+{% if not versions %}<p class="muted">No earlier versions.</p>{% endif %}
+{% for version in versions %}
+<p class="small muted">
+  version {{ version.version }} · {{ version.actor }} · <span class="num">{{ version.at|localtime }}</span>
+</p>
+{% endfor %}
+{% endblock %}

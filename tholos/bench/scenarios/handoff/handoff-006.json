@@ -1,0 +1,31 @@
+{
+  "id": "handoff-006",
+  "category": "handoff",
+  "template": "b-handoff-2",
+  "agent": "Ranger",
+  "workspace": {
+    "agents": [
+      {"name": "Ranger", "role": "You watch the garden and hand problem plots to the Gardener.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Gardener", "role": "You treat wilting plants and pests.", "tools": ["table_read", "table_update", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "plants", "columns": ["plot", "species", "health"], "rows": [
+        {"plot": "A1", "species": "tomato", "health": "good"},
+        {"plot": "A3", "species": "squash", "health": "wilting"},
+        {"plot": "B2", "species": "kale", "health": "wilting"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off wilting plants", "details": "Find the wilting plants and hand them to the Gardener. Include the plot numbers and species."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "plants", "query": "health:wilting", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Gardener", "title": "Treat wilting plants", "details": "Treat these wilting plants: plot A3 (squash) and plot B2 (kale)."}},
+    {"tool": "finish", "args": {"summary": "Handed the wilting plants to the Gardener."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Gardener", "title_contains": "wilting"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds wilting plants and hands them to the Gardener with plots and species."
+}

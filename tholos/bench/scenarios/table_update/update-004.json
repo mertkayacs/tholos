@@ -1,0 +1,36 @@
+{
+  "id": "update-004",
+  "category": "table_update",
+  "template": "b-update-status2",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You update order statuses by reading first and changing only the right rows.", "tools": ["table_read", "table_update", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "orders", "columns": ["order_id", "customer", "status"], "rows": [
+        {"order_id": "O-1001", "customer": "Rhea B", "status": "pending"},
+        {"order_id": "O-1002", "customer": "Kai N", "status": "pending"},
+        {"order_id": "O-1003", "customer": "Lena M", "status": "shipped"},
+        {"order_id": "O-1004", "customer": "Dev A", "status": "pending"},
+        {"order_id": "O-1005", "customer": "Zara K", "status": "shipped"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Ship pending orders", "details": "Change all pending orders to shipped. Do not touch the ones already shipped."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "orders", "query": "status:pending", "limit": null}},
+    {"tool": "table_update", "args": {"table": "orders", "row": 1, "values": {"order_id": null, "customer": null, "status": "shipped"}}},
+    {"tool": "table_update", "args": {"table": "orders", "row": 2, "values": {"order_id": null, "customer": null, "status": "shipped"}}},
+    {"tool": "table_update", "args": {"table": "orders", "row": 4, "values": {"order_id": null, "customer": null, "status": "shipped"}}},
+    {"tool": "finish", "args": {"summary": "Shipped all pending orders."}}
+  ],
+  "expect": [
+    {"type": "row", "table": "orders", "where": {"order_id": "O-1001"}, "has": {"status": "shipped"}},
+    {"type": "row", "table": "orders", "where": {"order_id": "O-1002"}, "has": {"status": "shipped"}},
+    {"type": "row", "table": "orders", "where": {"order_id": "O-1004"}, "has": {"status": "shipped"}},
+    {"type": "row", "table": "orders", "where": {"order_id": "O-1003"}, "has": {"status": "shipped"}}
+  ],
+  "max_steps": 6,
+  "about": "Changes pending orders to shipped and leaves already-shipped orders alone."
+}

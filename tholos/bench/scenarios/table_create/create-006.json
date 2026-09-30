@@ -1,0 +1,26 @@
+{
+  "id": "create-006",
+  "category": "table_create",
+  "template": "b-create-table2",
+  "agent": "Recorder",
+  "workspace": {
+    "agents": [
+      {"name": "Recorder", "role": "You create new tables to track subscriptions and fill them.", "tools": ["table_create", "table_add", "finish"], "max_steps": 5}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Subscription tracker", "details": "Create a table called 'subscriptions' with columns: service, cost, renews, status. Add: 'streamplus' cost 12.99, renews 2024-10-01, status active."},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "subscriptions", "columns": ["service", "cost", "renews", "status"]}},
+    {"tool": "table_add", "args": {"table": "subscriptions", "rows": [
+      {"service": "streamplus", "cost": 12.99, "renews": "2024-10-01", "status": "active"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Created the subscriptions table with one entry."}}
+  ],
+  "expect": [
+    {"type": "table_exists", "table": "subscriptions", "columns": ["service", "cost", "renews", "status"]},
+    {"type": "rows", "table": "subscriptions", "count": 1},
+    {"type": "row", "table": "subscriptions", "where": {"service": "streamplus"}, "has": {"cost": 12.99}}
+  ],
+  "max_steps": 5,
+  "about": "Creates a subscription tracker table and fills it with one entry."
+}

@@ -1,0 +1,26 @@
+{
+  "id": "notes-004",
+  "category": "notes",
+  "template": "b-note-append",
+  "agent": "Scribe",
+  "workspace": {
+    "agents": [
+      {"name": "Scribe", "role": "You write and update notes in the workspace, keeping existing content when appending.", "tools": ["note_read", "note_write", "finish"], "max_steps": 5}
+    ],
+    "notes": [
+      {"title": "Reading log", "body": "Finished 'The Quiet Harbor' on 2024-08-10."}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Add to reading log", "details": "Append to the 'Reading log' note: Finished 'Silent Meadow' on 2024-09-01. Keep the existing entry."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Reading log"}},
+    {"tool": "note_write", "args": {"title": "Reading log", "text": "\nFinished 'Silent Meadow' on 2024-09-01.", "mode": "append"}},
+    {"tool": "finish", "args": {"summary": "Appended the new book to the reading log."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Reading log", "contains": ["The Quiet Harbor", "Silent Meadow"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Appends to an existing note while keeping the original content."
+}

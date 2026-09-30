@@ -1,0 +1,31 @@
+{
+  "id": "handoff-003",
+  "category": "handoff",
+  "template": "b-handoff-1",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You watch inventory and hand reorder work to the Buyer.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Buyer", "role": "You place orders for items that run low.", "tools": ["table_read", "table_update", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "stock", "columns": ["sku", "item", "qty"], "rows": [
+        {"sku": "A100", "item": "flour 25kg", "qty": 14},
+        {"sku": "A101", "item": "sugar 10kg", "qty": 0},
+        {"sku": "A102", "item": "olive oil 5L", "qty": 0}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off restock", "details": "Find the items with quantity zero and hand them to the Buyer to reorder. Include the item names and skus."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "stock", "query": "qty:0", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Buyer", "title": "Reorder out of stock items", "details": "Reorder these out of stock items: sugar 10kg (A101) and olive oil 5L (A102)."}},
+    {"tool": "finish", "args": {"summary": "Handed the restock list to the Buyer."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Buyer", "title_contains": "Reorder"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds out of stock items and hands them to the Buyer with names and skus."
+}

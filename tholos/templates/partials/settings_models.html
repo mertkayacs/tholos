@@ -1,0 +1,53 @@
+{% if model_error %}<p class="error" role="alert" style="color: var(--danger)">{{ model_error }}</p>{% endif %}
+{% if not models %}
+<p class="muted">No models yet. Add one, or detect a local server.</p>
+{% endif %}
+{% for model in models %}
+<div class="card" style="background: var(--sunken)">
+  <div class="page-head" style="margin-bottom: 8px">
+    <h3>{{ model.name }}</h3>
+    <span class="spacer"></span>
+    <form hx-post="/settings/models/{{ model.id }}/test" hx-target="#models-wrap" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn secondary small" type="submit">Test</button>
+    </form>
+    <form hx-post="/settings/models/{{ model.id }}/delete" hx-target="#models-wrap"
+          hx-confirm="Delete this model?" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn quiet small danger" type="submit" aria-label="Delete model {{ model.name }}">
+        <svg class="icon" aria-hidden="true"><use href="#i-trash-2"></use></svg>
+      </button>
+    </form>
+  </div>
+  <p class="small muted mono">{{ model.base_url }} · {{ model.model }} · {{ model.json_mode }}
+    {% if model.api_key_masked %} · key {{ model.api_key_masked }}{% endif %}</p>
+  {% if test_result and test_result.id == model.id %}
+  <p role="status" style="color: {% if test_result.ok %}var(--done){% else %}var(--danger){% endif %}">
+    {{ test_result.message }}</p>
+  {% endif %}
+  <details>
+    <summary>Edit</summary>
+    <form hx-post="/settings/models" hx-target="#models-wrap" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="id" value="{{ model.id }}">
+      {% set m = model %}
+      {% include "partials/model_fields.html" %}
+      <button class="btn secondary" type="submit">Save model</button>
+    </form>
+  </details>
+</div>
+{% endfor %}
+<h3>Add a model</h3>
+<form hx-post="/settings/models" hx-target="#models-wrap" method="post" data-reset>
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% set m = None %}
+  {% include "partials/model_fields.html" %}
+  <button class="btn primary" type="submit">Add model</button>
+</form>
+<h3>Detect a local server</h3>
+<p class="muted">Probes Ollama at 127.0.0.1:11434 and llama-server at 127.0.0.1:8080.</p>
+<form hx-post="/settings/models/detect" hx-target="#detect-results" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <button class="btn secondary" type="submit">Detect</button>
+</form>
+<div id="detect-results"></div>

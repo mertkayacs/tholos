@@ -1,0 +1,28 @@
+{
+  "id": "approval-005",
+  "category": "approval",
+  "template": "b-approval-ok",
+  "agent": "Scout",
+  "workspace": {
+    "agents": [
+      {"name": "Scout", "role": "You hand work to teammates, but creating tasks needs the owner's approval.", "tools": ["task_add", "finish"], "max_steps": 4},
+      {"name": "Writer", "role": "You write drafts.", "tools": ["note_write", "finish"], "max_steps": 6}
+    ],
+    "rules": [
+      {"agent": "*", "tool": "task_add", "match": "*", "decision": "ask"}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off a draft", "details": "Ask the Writer to draft a welcome email for new members."},
+  "respond": {"approve": true},
+  "reference": [
+    {"tool": "task_add", "args": {"to": "Writer", "title": "Draft welcome email", "details": "Draft a welcome email for new members."}},
+    {"tool": "finish", "args": {"summary": "Handed the draft to the Writer."}}
+  ],
+  "expect": [
+    {"type": "approval", "tool": "task_add"},
+    {"type": "task", "to": "Writer", "title_contains": "welcome email"},
+    {"type": "finished"}
+  ],
+  "max_steps": 4,
+  "about": "Creates a task for a teammate after the owner approves the task_add."
+}

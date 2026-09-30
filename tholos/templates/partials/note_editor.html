@@ -1,0 +1,18 @@
+{% if conflict %}
+<div class="conflict" role="alert">
+  <span>This note changed while you were editing. Your text is still below; reload to see version {{ note.version }} on disk.</span>
+  <button class="btn secondary small" hx-get="/partials/notes/{{ note.title|urlquote }}/editor"
+          hx-target="#note-editor-wrap">
+    <svg class="icon" aria-hidden="true"><use href="#i-rotate-cw"></use></svg>Reload
+  </button>
+</div>
+{% endif %}
+<form hx-post="/notes/{{ note.title|urlquote }}" hx-target="#note-editor-wrap" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="expected_version" value="{{ note.version }}">
+  <div class="field">
+    <label for="note-body">Body (Markdown)</label>
+    <textarea id="note-body" name="text" rows="12" style="min-height: 240px">{{ note.body }}</textarea>
+  </div>
+  <button class="btn primary" type="submit">Save</button>
+</form>

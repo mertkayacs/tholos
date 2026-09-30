@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Tables · Tholos{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Tables</h1></div>
+{% if not tables %}
+<p class="empty">No tables yet. Agents and you share tables here.</p>
+{% endif %}
+{% for table in tables %}
+<div class="card">
+  <p><a href="/tables/{{ table.name|urlquote }}"><strong>{{ table.name }}</strong></a></p>
+  <p class="small muted num">{{ table.count }} rows · {{ table.columns|join(", ") }}</p>
+</div>
+{% endfor %}
+<h2>New table</h2>
+<div class="card" id="new-table-form">
+  {% include "partials/table_new.html" %}
+</div>
+{% endblock %}

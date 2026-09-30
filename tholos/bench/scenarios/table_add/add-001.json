@@ -1,0 +1,32 @@
+{
+  "id": "add-001",
+  "category": "table_add",
+  "template": "b-add-rows",
+  "agent": "Ingestor",
+  "workspace": {
+    "agents": [
+      {"name": "Ingestor", "role": "You add new rows to workspace tables from information the owner gives you.", "tools": ["table_read", "table_add", "finish"], "max_steps": 4}
+    ],
+    "tables": [
+      {"name": "leads", "columns": ["title", "url", "status", "source"], "rows": [
+        {"title": "Willowfield supply inquiry", "url": "willowfield.example", "status": "new", "source": "email"},
+        {"title": "Harbor logistics quote", "url": "harbor.example", "status": "new", "source": "web"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Add two leads", "details": "Add these leads to the leads table: 'Willow accounting demo' at willow.example with status new from web, and 'Dune consulting call' at dune.example with status contacted from phone."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "leads", "rows": [
+      {"title": "Willow accounting demo", "url": "willow.example", "status": "new", "source": "web"},
+      {"title": "Dune consulting call", "url": "dune.example", "status": "contacted", "source": "phone"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Added two leads to the table."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "leads", "count": 4},
+    {"type": "row", "table": "leads", "where": {"title": "Willow accounting demo"}, "has": {"status": "new"}},
+    {"type": "row", "table": "leads", "where": {"title": "Dune consulting call"}, "has": {"source": "phone"}}
+  ],
+  "max_steps": 4,
+  "about": "Adds two new lead rows with the correct columns and values."
+}

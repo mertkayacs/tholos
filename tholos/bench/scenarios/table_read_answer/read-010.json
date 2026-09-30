@@ -1,0 +1,36 @@
+{
+  "id": "read-010",
+  "category": "table_read_answer",
+  "template": "b-read-count2",
+  "agent": "Warden",
+  "workspace": {
+    "agents": [
+      {"name": "Warden", "role": "You read the event roster and answer simple questions.", "tools": ["table_read", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "rsvp", "columns": ["guest", "attending", "plus_one"], "rows": [
+        {"guest": "Ada L", "attending": "yes", "plus_one": "no"},
+        {"guest": "Bo X", "attending": "yes", "plus_one": "yes"},
+        {"guest": "Cora J", "attending": "no", "plus_one": "no"},
+        {"guest": "Dax W", "attending": "yes", "plus_one": "yes"},
+        {"guest": "Eli G", "attending": "yes", "plus_one": "no"},
+        {"guest": "Fae T", "attending": "no", "plus_one": "no"},
+        {"guest": "Gus P", "attending": "yes", "plus_one": "yes"},
+        {"guest": "Hana R", "attending": "yes", "plus_one": "no"},
+        {"guest": "Ivo K", "attending": "yes", "plus_one": "yes"},
+        {"guest": "Jin Q", "attending": "no", "plus_one": "no"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Attending count", "details": "How many guests are attending?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "rsvp", "query": "attending:yes", "limit": null}},
+    {"tool": "finish", "args": {"summary": "7 guests are attending."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["7 guests"]}
+  ],
+  "max_steps": 3,
+  "about": "Reads an RSVP list and reports how many guests are attending."
+}

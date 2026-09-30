@@ -1,0 +1,29 @@
+{
+  "id": "add-010",
+  "category": "table_add",
+  "template": "b-add-rows3",
+  "agent": "Loader",
+  "workspace": {
+    "agents": [
+      {"name": "Loader", "role": "You add new book entries to the library table.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "books", "columns": ["title", "author", "isbn", "status"], "rows": [
+        {"title": "The Quiet Harbor", "author": "E. Marr", "isbn": "978-0000001", "status": "in"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "New book", "details": "Add 'The Long Valley' by J. Stein, ISBN 978-0000002, status in."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "books", "rows": [
+      {"title": "The Long Valley", "author": "J. Stein", "isbn": "978-0000002", "status": "in"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Added The Long Valley."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "books", "count": 2},
+    {"type": "row", "table": "books", "where": {"isbn": "978-0000002"}, "has": {"author": "J. Stein"}}
+  ],
+  "max_steps": 3,
+  "about": "Adds a book with title, author, ISBN, and status."
+}

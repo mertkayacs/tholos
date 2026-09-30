@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Board · Tholos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Board</h1>
+  <span class="spacer"></span>
+</div>
+
+{% if not has_model %}
+<div class="card">
+  <h2>Connect a model</h2>
+  <p>Tholos needs at least one OpenAI-compatible model before agents can work.</p>
+  <a class="btn primary" href="/settings">Open settings</a>
+</div>
+{% elif not has_agents %}
+<div class="card">
+  <h2>Load the Research desk team</h2>
+  <p>Three agents that read sources, score leads, and write a weekly brief.</p>
+  <form hx-post="/teams/load" data-reset>
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="name" value="research-desk">
+    <button class="btn primary" type="submit">Load the Research desk team</button>
+  </form>
+</div>
+{% endif %}
+
+<div class="card">
+  <form hx-post="/tasks" hx-target="#working-cards" data-reset>
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="form-row">
+      <div class="field" style="max-width: 200px">
+        <label for="task-to">New task for</label>
+        <select id="task-to" name="to">
+          <option value="you">you</option>
+          {% for agent in agents %}<option value="{{ agent.name }}">{{ agent.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field" style="flex: 1">
+        <label for="task-title">Title</label>
+        <input type="text" id="task-title" name="title" required>
+      </div>
+      <div class="field" style="flex: 2">
+        <label for="task-details">Details</label>
+        <input type="text" id="task-details" name="details">
+      </div>
+      <button class="btn primary" type="submit">Add task</button>
+    </div>
+  </form>
+</div>
+
+<div class="board" hx-ext="sse" sse-connect="/events">
+  <section class="lane" aria-labelledby="lane-scheduled-h">
+    <h2 id="lane-scheduled-h"><svg class="icon" aria-hidden="true"><use href="#i-clock"></use></svg>Scheduled</h2>
+    <div id="scheduled-cards" hx-get="/partials/board/scheduled" hx-trigger="sse:change throttle:1s">
+      {% include "partials/scheduled.html" %}
+    </div>
+  </section>
+  <section class="lane" aria-labelledby="lane-working-h">
+    <h2 id="lane-working-h">Working</h2>
+    <div id="working-cards" hx-get="/partials/board/working" hx-trigger="sse:change throttle:1s">
+      {% include "partials/working.html" %}
+    </div>
+  </section>
+  <section class="lane waiting-lane" aria-labelledby="lane-waiting-h">
+    <h2 id="lane-waiting-h"><svg class="icon" aria-hidden="true"><use href="#i-hand"></use></svg>Waiting on you</h2>
+    <div id="waiting-cards" hx-get="/partials/board/waiting" hx-trigger="sse:change throttle:1s">
+      {% include "partials/waiting.html" %}
+    </div>
+  </section>
+  <section class="lane" aria-labelledby="lane-done-h">
+    <h2 id="lane-done-h"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>Done</h2>
+    <div id="done-cards" hx-get="/partials/board/done" hx-trigger="sse:change throttle:1s">
+      {% include "partials/done.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}

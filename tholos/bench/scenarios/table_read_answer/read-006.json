@@ -1,0 +1,34 @@
+{
+  "id": "read-006",
+  "category": "table_read_answer",
+  "template": "b-read-max",
+  "agent": "Pricer",
+  "workspace": {
+    "agents": [
+      {"name": "Pricer", "role": "You read price lists and report the highest or lowest value.", "tools": ["table_read", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "quotes", "columns": ["vendor", "item", "price"], "rows": [
+        {"vendor": "Nordwind", "item": "steel beam", "price": 320},
+        {"vendor": "Sudwerk", "item": "steel beam", "price": 305},
+        {"vendor": "Osthandel", "item": "steel beam", "price": 348},
+        {"vendor": "Westhaus", "item": "steel beam", "price": 299},
+        {"vendor": "Kustlager", "item": "steel beam", "price": 331},
+        {"vendor": "Fjordbrug", "item": "steel beam", "price": 312},
+        {"vendor": "Alpware", "item": "steel beam", "price": 355},
+        {"vendor": "Mitteco", "item": "steel beam", "price": 289}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Cheapest quote", "details": "Which vendor has the cheapest price for a steel beam, and what is that price?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "quotes", "query": null, "limit": null}},
+    {"tool": "finish", "args": {"summary": "Mitteco has the cheapest steel beam at 289."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["Mitteco", "289"]}
+  ],
+  "max_steps": 5,
+  "about": "Reads a price table and reports the cheapest vendor and price."
+}

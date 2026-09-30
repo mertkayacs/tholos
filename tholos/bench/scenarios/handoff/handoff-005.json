@@ -1,0 +1,31 @@
+{
+  "id": "handoff-005",
+  "category": "handoff",
+  "template": "b-handoff-2",
+  "agent": "Audit",
+  "workspace": {
+    "agents": [
+      {"name": "Audit", "role": "You review invoices and hand overdue ones to the Collector.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Collector", "role": "You follow up on overdue invoices.", "tools": ["note_write", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "invoices", "columns": ["number", "client", "amount", "status"], "rows": [
+        {"number": "INV-40", "client": "Brighton Co", "amount": 1250, "status": "overdue"},
+        {"number": "INV-41", "client": "Fernwood Ltd", "amount": 2400, "status": "paid"},
+        {"number": "INV-42", "client": "Ashgrove", "amount": 800, "status": "overdue"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off overdue invoices", "details": "Find the overdue invoices and hand them to the Collector. Include the invoice numbers, clients, and amounts."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "invoices", "query": "status:overdue", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Collector", "title": "Follow up on overdue invoices", "details": "Follow up on these overdue invoices: INV-40 for Brighton Co (1250) and INV-42 for Ashgrove (800)."}},
+    {"tool": "finish", "args": {"summary": "Handed the overdue invoices to the Collector."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Collector", "title_contains": "overdue"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds overdue invoices and hands them to the Collector with details."
+}

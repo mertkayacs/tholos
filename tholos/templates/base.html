@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
+<title>{% block title %}Tholos{% endblock %}</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/htmx-sse.js" defer></script>
+<script src="/static/app.js" defer></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+{% include "icons.svg" %}
+{% set nav = [("/", "layout-grid", "Board"), ("/agents", "users", "Agents"), ("/tables", "table", "Tables"), ("/notes", "file-text", "Notes"), ("/activity", "activity", "Activity"), ("/settings", "settings", "Settings")] %}
+<div class="topbar">
+  <a class="brand" href="/">{% include "logo.svg" %}<span class="word">Tholos</span></a>
+  <span class="spacer"></span>
+  <a class="badge waiting" href="/">Waiting on you: {{ waiting_count }}</a>
+  <details class="menu-pop">
+    <summary class="menu-toggle" aria-label="Menu"><svg class="icon big" aria-hidden="true"><use href="#i-menu"></use></svg></summary>
+    <nav class="menu-list nav" aria-label="Main">
+      {% for href, icon, label in nav %}
+      <a href="{{ href }}"{% if page == label.lower() %} aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg>{{ label }}
+      </a>
+      {% endfor %}
+    </nav>
+  </details>
+</div>
+<div class="shell">
+  <aside class="sidebar">
+    <a class="brand" href="/">{% include "logo.svg" %}<span class="word">Tholos</span></a>
+    <nav class="nav" aria-label="Main">
+      {% for href, icon, label in nav %}
+      <a href="{{ href }}"{% if page == label.lower() %} aria-current="page"{% endif %}>
+        <svg class="icon" aria-hidden="true"><use href="#i-{{ icon }}"></use></svg>{{ label }}
+      </a>
+      {% endfor %}
+    </nav>
+    <p class="small muted">
+      <a href="/">Waiting on you: <span class="count" aria-label="{{ waiting_count }} waiting">{{ waiting_count }}</span></a>
+    </p>
+  </aside>
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<div id="toasts" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{% if not done_runs and not done_tasks %}
+<p class="empty">Finished runs and tasks land here.</p>
+{% endif %}
+{% for run in done_runs %}
+<div class="card board-card{% if run.status == 'done' %} done-card{% endif %}">
+  <p>
+    {% if run.status == "done" %}
+    <span class="badge done"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>Done</span>
+    {% else %}
+    <span class="badge failed"><svg class="icon" aria-hidden="true"><use href="#i-triangle-alert"></use></svg>Failed</span>
+    {% endif %}
+    <a href="/runs/{{ run.id }}">#{{ run.id }}</a> <span class="muted">{{ run.agent }}</span>
+  </p>
+  <p class="small">{{ run.trigger.split("\n")[-1] }}</p>
+  <p class="small muted num">{{ run.ended_at|localtime }}</p>
+</div>
+{% endfor %}
+{% for task in done_tasks %}
+<div class="card board-card done-card">
+  <p><span class="badge done"><svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>Task</span>
+    {% if task.agent %}<span class="muted">{{ task.agent }}</span>{% else %}<span class="muted">you</span>{% endif %}
+  </p>
+  <p class="small">{{ task.title }}</p>
+  {% if task.result %}<p class="small muted">{{ task.result }}</p>{% endif %}
+</div>
+{% endfor %}

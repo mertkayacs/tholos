@@ -1,0 +1,31 @@
+{
+  "id": "handoff-004",
+  "category": "handoff",
+  "template": "b-handoff-2",
+  "agent": "Planner",
+  "workspace": {
+    "agents": [
+      {"name": "Planner", "role": "You plan events and hand logistics to the Coordinator.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Coordinator", "role": "You arrange venues and catering for events.", "tools": ["note_write", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "events", "columns": ["name", "date", "guests", "status"], "rows": [
+        {"name": "spring fair", "date": "2024-04-20", "guests": 120, "status": "planning"},
+        {"name": "summer picnic", "date": "2024-07-15", "guests": 60, "status": "planning"},
+        {"name": "autumn gala", "date": "2024-10-10", "guests": 200, "status": "confirmed"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off planning events", "details": "Find the events still in planning and hand them to the Coordinator to arrange venues. Include the event names, dates, and guest counts."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "events", "query": "status:planning", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Coordinator", "title": "Arrange venues for planning events", "details": "Arrange venues for these events still in planning: spring fair on 2024-04-20 for 120 guests, and summer picnic on 2024-07-15 for 60 guests."}},
+    {"tool": "finish", "args": {"summary": "Handed the planning events to the Coordinator."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Coordinator", "title_contains": "venues"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds planning events and hands them to the Coordinator with details."
+}

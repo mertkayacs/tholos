@@ -1,0 +1,22 @@
+{
+  "id": "notes-001",
+  "category": "notes",
+  "template": "b-note-write",
+  "agent": "Scribe",
+  "workspace": {
+    "agents": [
+      {"name": "Scribe", "role": "You write and update notes in the workspace.", "tools": ["note_read", "note_write", "finish"], "max_steps": 4}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Write a recipe note", "details": "Create a note titled 'Pancake recipe' with the ingredients: flour, eggs, milk, baking powder, and a pinch of salt."},
+  "reference": [
+    {"tool": "note_write", "args": {"title": "Pancake recipe", "text": "Ingredients: flour, eggs, milk, baking powder, and a pinch of salt.", "mode": "replace"}},
+    {"tool": "finish", "args": {"summary": "Wrote the pancake recipe note."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Pancake recipe", "contains": ["flour", "baking powder"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 4,
+  "about": "Writes a new note with a recipe."
+}

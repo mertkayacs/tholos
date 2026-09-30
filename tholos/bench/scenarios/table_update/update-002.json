@@ -1,0 +1,34 @@
+{
+  "id": "update-002",
+  "category": "table_update",
+  "template": "b-update-status",
+  "agent": "Triage",
+  "workspace": {
+    "agents": [
+      {"name": "Triage", "role": "You update bug statuses by reading first and changing only matching rows.", "tools": ["table_read", "table_update", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "bugs", "columns": ["id", "title", "status", "priority"], "rows": [
+        {"id": "B1", "title": "login loop", "status": "open", "priority": "critical"},
+        {"id": "B2", "title": "typo", "status": "open", "priority": "low"},
+        {"id": "B3", "title": "csv accents", "status": "open", "priority": "critical"},
+        {"id": "B4", "title": "slow search", "status": "open", "priority": "medium"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Close critical bugs", "details": "Close every critical bug. Leave the others open."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "bugs", "query": "priority:critical", "limit": null}},
+    {"tool": "table_update", "args": {"table": "bugs", "row": 1, "values": {"id": null, "title": null, "status": "closed", "priority": null}}},
+    {"tool": "table_update", "args": {"table": "bugs", "row": 3, "values": {"id": null, "title": null, "status": "closed", "priority": null}}},
+    {"tool": "finish", "args": {"summary": "Closed the critical bugs."}}
+  ],
+  "expect": [
+    {"type": "row", "table": "bugs", "where": {"id": "B1"}, "has": {"status": "closed"}},
+    {"type": "row", "table": "bugs", "where": {"id": "B3"}, "has": {"status": "closed"}},
+    {"type": "row", "table": "bugs", "where": {"id": "B2"}, "has": {"status": "open"}},
+    {"type": "row", "table": "bugs", "where": {"id": "B4"}, "has": {"status": "open"}}
+  ],
+  "max_steps": 5,
+  "about": "Closes only critical bugs and leaves lower priority rows open."
+}

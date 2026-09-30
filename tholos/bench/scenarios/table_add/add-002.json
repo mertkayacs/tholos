@@ -1,0 +1,30 @@
+{
+  "id": "add-002",
+  "category": "table_add",
+  "template": "b-add-rows",
+  "agent": "Logger",
+  "workspace": {
+    "agents": [
+      {"name": "Logger", "role": "You log new readings into the sensor table.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "readings", "columns": ["site", "temp", "humidity"], "rows": [
+        {"site": "north", "temp": 21, "humidity": 44},
+        {"site": "south", "temp": 23, "humidity": 40}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "message", "text": "Log a new reading: east site, temp 19, humidity 61."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "readings", "rows": [
+      {"site": "east", "temp": 19, "humidity": 61}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Logged the east site reading."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "readings", "count": 3},
+    {"type": "row", "table": "readings", "where": {"site": "east"}, "has": {"temp": 19, "humidity": 61}}
+  ],
+  "max_steps": 3,
+  "about": "Logs a single new sensor reading with the right columns."
+}

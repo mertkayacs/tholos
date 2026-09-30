@@ -1,0 +1,39 @@
+{
+  "id": "read-002",
+  "category": "table_read_answer",
+  "template": "b-read-count",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You read inventory tables and answer the owner's questions with short counts.", "tools": ["table_read", "finish"], "max_steps": 4},
+      {"name": "Buyer", "role": "You reorder items that are running low.", "tools": ["table_read", "table_update", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "stock", "columns": ["sku", "item", "qty", "reorder"], "rows": [
+        {"sku": "A100", "item": "flour 25kg", "qty": 14, "reorder": "yes"},
+        {"sku": "A101", "item": "sugar 10kg", "qty": 0, "reorder": "yes"},
+        {"sku": "A102", "item": "olive oil 5L", "qty": 3, "reorder": "yes"},
+        {"sku": "A103", "item": "dried basil", "qty": 0, "reorder": "yes"},
+        {"sku": "A104", "item": "cocoa powder", "qty": 22, "reorder": "no"},
+        {"sku": "A105", "item": "yeast 500g", "qty": 6, "reorder": "yes"},
+        {"sku": "A106", "item": "vanilla beans", "qty": 0, "reorder": "no"},
+        {"sku": "A107", "item": "parchment paper", "qty": 40, "reorder": "no"},
+        {"sku": "A108", "item": "chocolate chips", "qty": 0, "reorder": "yes"},
+        {"sku": "A109", "item": "almond flour", "qty": 9, "reorder": "no"},
+        {"sku": "A110", "item": "coconut flakes", "qty": 18, "reorder": "no"},
+        {"sku": "A111", "item": "sea salt fine", "qty": 25, "reorder": "no"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Out of stock", "details": "How many items have a quantity of zero?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "stock", "query": "qty:0", "limit": null}},
+    {"tool": "finish", "args": {"summary": "4 items are out of stock."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["4 items"]}
+  ],
+  "max_steps": 4,
+  "about": "Reads a stock table and reports how many items are at quantity zero."
+}

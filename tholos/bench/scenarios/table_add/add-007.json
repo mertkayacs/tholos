@@ -1,0 +1,29 @@
+{
+  "id": "add-007",
+  "category": "table_add",
+  "template": "b-add-rows2",
+  "agent": "Loader",
+  "workspace": {
+    "agents": [
+      {"name": "Loader", "role": "You load new records into the shipment table.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "shipments", "columns": ["tracking", "carrier", "status", "eta"], "rows": [
+        {"tracking": "TRK-001", "carrier": "dhl", "status": "in transit", "eta": "2024-10-05"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Add shipment", "details": "New shipment TRK-002 via fedex, status pending, eta 2024-10-08."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "shipments", "rows": [
+      {"tracking": "TRK-002", "carrier": "fedex", "status": "pending", "eta": "2024-10-08"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Added shipment TRK-002."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "shipments", "count": 2},
+    {"type": "row", "table": "shipments", "where": {"tracking": "TRK-002"}, "has": {"carrier": "fedex"}}
+  ],
+  "max_steps": 3,
+  "about": "Adds a shipment record with tracking, carrier, status, and eta."
+}

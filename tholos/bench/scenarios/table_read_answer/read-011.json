@@ -1,0 +1,36 @@
+{
+  "id": "read-011",
+  "category": "table_read_answer",
+  "template": "b-read-count3",
+  "agent": "Ranger",
+  "workspace": {
+    "agents": [
+      {"name": "Ranger", "role": "You read the plant ledger and answer short questions.", "tools": ["table_read", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "plants", "columns": ["plot", "species", "health", "harvest"], "rows": [
+        {"plot": "A1", "species": "tomato", "health": "good", "harvest": "done"},
+        {"plot": "A2", "species": "basil", "health": "good", "harvest": "done"},
+        {"plot": "A3", "species": "squash", "health": "wilting", "harvest": "pending"},
+        {"plot": "B1", "species": "pepper", "health": "good", "harvest": "pending"},
+        {"plot": "B2", "species": "kale", "health": "wilting", "harvest": "pending"},
+        {"plot": "B3", "species": "carrot", "health": "good", "harvest": "pending"},
+        {"plot": "C1", "species": "bean", "health": "good", "harvest": "pending"},
+        {"plot": "C2", "species": "cucumber", "health": "wilting", "harvest": "pending"},
+        {"plot": "C3", "species": "radish", "health": "good", "harvest": "done"},
+        {"plot": "D1", "species": "lettuce", "health": "good", "harvest": "pending"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Wilting plants", "details": "How many plants are wilting?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "plants", "query": "health:wilting", "limit": null}},
+    {"tool": "finish", "args": {"summary": "3 plants are wilting."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["3 plants"]}
+  ],
+  "max_steps": 3,
+  "about": "Reads a garden ledger and reports how many plants are wilting."
+}

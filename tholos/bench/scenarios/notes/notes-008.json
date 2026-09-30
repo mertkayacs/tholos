@@ -1,0 +1,25 @@
+{
+  "id": "notes-008",
+  "category": "notes",
+  "template": "b-note-read",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You read notes and report what they say.", "tools": ["note_read", "finish"], "max_steps": 3}
+    ],
+    "notes": [
+      {"title": "Return policy", "body": "Items can be returned within 30 days with a receipt. Refunds go to the original payment method."}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Return window", "details": "How many days do customers have to return an item? Read the 'Return policy' note."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Return policy"}},
+    {"tool": "finish", "args": {"summary": "Customers have 30 days to return an item."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["30 days"]}
+  ],
+  "max_steps": 3,
+  "about": "Reads a note and reports the return window."
+}

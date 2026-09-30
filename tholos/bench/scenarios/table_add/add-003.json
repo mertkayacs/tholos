@@ -1,0 +1,29 @@
+{
+  "id": "add-003",
+  "category": "table_add",
+  "template": "b-add-rows",
+  "agent": "Recorder",
+  "workspace": {
+    "agents": [
+      {"name": "Recorder", "role": "You add transactions to the ledger.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "ledger", "columns": ["date", "payee", "amount", "category"], "rows": [
+        {"date": "2024-09-01", "payee": "corner store", "amount": 12.4, "category": "groceries"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Log purchase", "details": "Log this: on 2024-09-02 I paid 'green market' 38.5 for groceries."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "ledger", "rows": [
+      {"date": "2024-09-02", "payee": "green market", "amount": 38.5, "category": "groceries"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Logged the green market purchase."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "ledger", "count": 2},
+    {"type": "row", "table": "ledger", "where": {"payee": "green market"}, "has": {"amount": 38.5}}
+  ],
+  "max_steps": 3,
+  "about": "Adds one transaction with a decimal amount and all columns filled."
+}

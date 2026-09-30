@@ -1,0 +1,26 @@
+{
+  "id": "notes-010",
+  "category": "notes",
+  "template": "b-note-replace",
+  "agent": "Scribe",
+  "workspace": {
+    "agents": [
+      {"name": "Scribe", "role": "You rewrite notes by reading them first, then replacing the content.", "tools": ["note_read", "note_write", "finish"], "max_steps": 5}
+    ],
+    "notes": [
+      {"title": "Draft announcement", "body": "The market opens next week. Details to follow."}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Finalize announcement", "details": "Rewrite the 'Draft announcement' note to say: The market opens Saturday, October 5, at 9 am. Read it first, then replace it."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Draft announcement"}},
+    {"tool": "note_write", "args": {"title": "Draft announcement", "text": "The market opens Saturday, October 5, at 9 am.", "mode": "replace"}},
+    {"tool": "finish", "args": {"summary": "Rewrote the announcement."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Draft announcement", "contains": ["Saturday, October 5"], "not_contains": ["Details to follow"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Reads a note and replaces its content with a finalized version."
+}

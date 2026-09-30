@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Agents · Tholos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Agents</h1>
+  <span class="spacer"></span>
+  <a class="btn primary" href="/agents/new"><svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>New agent</a>
+</div>
+{% if not agents %}
+<p class="empty">No agents yet. Create one, or load a starter team from settings.</p>
+{% endif %}
+{% for agent in agents %}
+<div class="card">
+  <div class="page-head" style="margin-bottom: 8px">
+    <h2 style="font-size: 18px"><a href="/agents/{{ agent.name|urlquote }}">{{ agent.name }}</a></h2>
+    {% if agent.status == "working" %}
+    <span class="badge working"><span class="dot" aria-hidden="true"></span>Working</span>
+    {% elif agent.status == "waiting" %}
+    <span class="badge waiting"><svg class="icon" aria-hidden="true"><use href="#i-hand"></use></svg>Waiting</span>
+    {% elif agent.status == "paused" %}
+    <span class="badge">Paused</span>
+    {% else %}
+    <span class="badge">Idle</span>
+    {% endif %}
+  </div>
+  <p class="muted">{{ agent.role }}</p>
+  <p class="small muted">
+    {{ agent.tools|length }} tools · {{ agent.max_steps }} steps
+    {% if agent.next_at %} · next run {{ agent.next_at|localtime }}{% endif %}
+  </p>
+</div>
+{% endfor %}
+{% endblock %}

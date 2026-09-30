@@ -1,0 +1,22 @@
+{
+  "id": "notes-003",
+  "category": "notes",
+  "template": "b-note-write",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You write and update notes in the workspace.", "tools": ["note_read", "note_write", "finish"], "max_steps": 4}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Packing checklist", "details": "Create a note titled 'Camping checklist' listing: tent, sleeping bag, stove, headlamp, and water filter."},
+  "reference": [
+    {"tool": "note_write", "args": {"title": "Camping checklist", "text": "tent, sleeping bag, stove, headlamp, water filter", "mode": "replace"}},
+    {"tool": "finish", "args": {"summary": "Wrote the camping checklist."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Camping checklist", "contains": ["sleeping bag", "water filter"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 4,
+  "about": "Writes a new note with a checklist."
+}

@@ -1,0 +1,27 @@
+{
+  "id": "approval-004",
+  "category": "approval",
+  "template": "b-approval-ok",
+  "agent": "Scribe",
+  "workspace": {
+    "agents": [
+      {"name": "Scribe", "role": "You write notes, but writing needs the owner's approval.", "tools": ["note_write", "finish"], "max_steps": 4}
+    ],
+    "rules": [
+      {"agent": "*", "tool": "note_write", "match": "*", "decision": "ask"}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Write a policy note", "details": "Write a note titled 'Refund policy' with the text: Refunds are issued within 5 business days."},
+  "respond": {"approve": true},
+  "reference": [
+    {"tool": "note_write", "args": {"title": "Refund policy", "text": "Refunds are issued within 5 business days.", "mode": "replace"}},
+    {"tool": "finish", "args": {"summary": "Wrote the refund policy."}}
+  ],
+  "expect": [
+    {"type": "approval", "tool": "note_write"},
+    {"type": "note", "title": "Refund policy", "contains": ["5 business days"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 4,
+  "about": "Writes a note after the owner approves the note_write."
+}

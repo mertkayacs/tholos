@@ -1,0 +1,31 @@
+{
+  "id": "handoff-013",
+  "category": "handoff",
+  "template": "b-handoff-5",
+  "agent": "Planner",
+  "workspace": {
+    "agents": [
+      {"name": "Planner", "role": "You review trip requests and hand approved ones to the Booker.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Booker", "role": "You book travel and lodging.", "tools": ["note_write", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "trips", "columns": ["id", "destination", "traveler", "status"], "rows": [
+        {"id": "TR1", "destination": "Lisbon", "traveler": "Mira", "status": "approved"},
+        {"id": "TR2", "destination": "Oslo", "traveler": "Tom", "status": "pending"},
+        {"id": "TR3", "destination": "Seoul", "traveler": "Lee", "status": "approved"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off approved trips", "details": "Find the approved trips and hand them to the Booker. Include ids, destinations, and travelers."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "trips", "query": "status:approved", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Booker", "title": "Book approved trips", "details": "Book these approved trips: TR1 to Lisbon for Mira, and TR3 to Seoul for Lee."}},
+    {"tool": "finish", "args": {"summary": "Handed the approved trips to the Booker."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Booker", "title_contains": "Book"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds approved trips and hands them to the Booker."
+}

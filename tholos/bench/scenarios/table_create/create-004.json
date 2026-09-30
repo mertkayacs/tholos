@@ -1,0 +1,26 @@
+{
+  "id": "create-004",
+  "category": "table_create",
+  "template": "b-create-table2",
+  "agent": "Warden",
+  "workspace": {
+    "agents": [
+      {"name": "Warden", "role": "You create new tables to track events and fill them.", "tools": ["table_create", "table_add", "finish"], "max_steps": 5}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Workshop schedule", "details": "Create a table called 'workshops' with columns: title, date, room, seats. Add: 'intro to soldering' on 2024-10-12 in room A with 12 seats."},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "workshops", "columns": ["title", "date", "room", "seats"]}},
+    {"tool": "table_add", "args": {"table": "workshops", "rows": [
+      {"title": "intro to soldering", "date": "2024-10-12", "room": "A", "seats": 12}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Created the workshops table with one workshop."}}
+  ],
+  "expect": [
+    {"type": "table_exists", "table": "workshops", "columns": ["title", "date", "room", "seats"]},
+    {"type": "rows", "table": "workshops", "count": 1},
+    {"type": "row", "table": "workshops", "where": {"title": "intro to soldering"}, "has": {"seats": 12}}
+  ],
+  "max_steps": 5,
+  "about": "Creates a workshop schedule table and fills it with one workshop."
+}

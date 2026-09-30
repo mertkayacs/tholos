@@ -1,0 +1,31 @@
+{
+  "id": "handoff-001",
+  "category": "handoff",
+  "template": "b-handoff-1",
+  "agent": "Scout",
+  "workspace": {
+    "agents": [
+      {"name": "Scout", "role": "You find leads and hand writing work to the Writer.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Writer", "role": "You write outreach drafts for leads.", "tools": ["note_write", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "leads", "columns": ["title", "url", "status"], "rows": [
+        {"title": "Willowfield supply", "url": "willowfield.example", "status": "new"},
+        {"title": "Harbor logistics", "url": "harbor.example", "status": "new"},
+        {"title": "Maple bakery", "url": "maple.example", "status": "contacted"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off new leads", "details": "Find the leads with status new and hand them to the Writer to draft outreach. Give the Writer the lead titles and urls."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "leads", "query": "status:new", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Writer", "title": "Draft outreach for new leads", "details": "Draft outreach for these new leads: Willowfield supply (willowfield.example) and Harbor logistics (harbor.example)."}},
+    {"tool": "finish", "args": {"summary": "Handed the new leads to the Writer."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Writer", "title_contains": "outreach"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds new leads and hands them to the Writer with titles and urls."
+}

@@ -1,0 +1,36 @@
+{
+  "id": "read-004",
+  "category": "table_read_answer",
+  "template": "b-read-count2",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You read the membership list and answer simple questions.", "tools": ["table_read", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "members", "columns": ["name", "email", "plan", "joined"], "rows": [
+        {"name": "Iris Nolan", "email": "iris@brightside.test", "plan": "free", "joined": "2024-01"},
+        {"name": "Theo Marsh", "email": "theo@brightside.test", "plan": "pro", "joined": "2024-02"},
+        {"name": "Wren Ito", "email": "wren@brightside.test", "plan": "free", "joined": "2024-03"},
+        {"name": "Sana Osei", "email": "sana@brightside.test", "plan": "team", "joined": "2024-03"},
+        {"name": "Leon Fisk", "email": "leon@brightside.test", "plan": "pro", "joined": "2024-04"},
+        {"name": "Maeve Quinn", "email": "maeve@brightside.test", "plan": "free", "joined": "2024-05"},
+        {"name": "Pavel Dvorak", "email": "pavel@brightside.test", "plan": "pro", "joined": "2024-06"},
+        {"name": "Nia Okoro", "email": "nia@brightside.test", "plan": "team", "joined": "2024-07"},
+        {"name": "Rafe Holt", "email": "rafe@brightside.test", "plan": "free", "joined": "2024-08"},
+        {"name": "Zola Vane", "email": "zola@brightside.test", "plan": "pro", "joined": "2024-09"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Pro count", "details": "How many members are on the pro plan?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "members", "query": "plan:pro", "limit": null}},
+    {"tool": "finish", "args": {"summary": "4 members are on the pro plan."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["4 members"]}
+  ],
+  "max_steps": 3,
+  "about": "Reads a membership table and reports the number of pro members."
+}

@@ -1,0 +1,29 @@
+{
+  "id": "add-011",
+  "category": "table_add",
+  "template": "b-add-rows3",
+  "agent": "Recorder",
+  "workspace": {
+    "agents": [
+      {"name": "Recorder", "role": "You add new invoices to the invoice table.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "invoices", "columns": ["number", "client", "amount", "due"], "rows": [
+        {"number": "INV-40", "client": "Brighton Co", "amount": 1250, "due": "2024-10-15"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Record invoice", "details": "Invoice INV-41 for Fernwood Ltd, amount 2400, due 2024-10-20."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "invoices", "rows": [
+      {"number": "INV-41", "client": "Fernwood Ltd", "amount": 2400, "due": "2024-10-20"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Recorded invoice INV-41."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "invoices", "count": 2},
+    {"type": "row", "table": "invoices", "where": {"number": "INV-41"}, "has": {"client": "Fernwood Ltd", "amount": 2400}}
+  ],
+  "max_steps": 3,
+  "about": "Adds an invoice with a numeric amount and a due date."
+}

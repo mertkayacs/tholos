@@ -1,0 +1,31 @@
+{
+  "id": "handoff-007",
+  "category": "handoff",
+  "template": "b-handoff-3",
+  "agent": "Scout",
+  "workspace": {
+    "agents": [
+      {"name": "Scout", "role": "You review candidate applications and hand promising ones to the Interviewer.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Interviewer", "role": "You schedule and run interviews.", "tools": ["note_write", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "candidates", "columns": ["name", "role", "stage", "score"], "rows": [
+        {"name": "Mira Chen", "role": "designer", "stage": "screen", "score": 88},
+        {"name": "Omar Said", "role": "engineer", "stage": "screen", "score": 72},
+        {"name": "Lena Petrova", "role": "designer", "stage": "screen", "score": 91}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off top candidates", "details": "Find candidates with a score of 85 or higher and hand them to the Interviewer. Include names, roles, and scores."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "candidates", "query": null, "limit": null}},
+    {"tool": "task_add", "args": {"to": "Interviewer", "title": "Interview top candidates", "details": "Interview these candidates with score 85 or higher: Mira Chen (designer, 88) and Lena Petrova (designer, 91)."}},
+    {"tool": "finish", "args": {"summary": "Handed the top candidates to the Interviewer."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Interviewer", "title_contains": "Interview"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds high scoring candidates and hands them to the Interviewer."
+}

@@ -1,0 +1,29 @@
+{
+  "id": "add-006",
+  "category": "table_add",
+  "template": "b-add-rows2",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You add appointments to the calendar table.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "calendar", "columns": ["date", "time", "who", "note"], "rows": [
+        {"date": "2024-10-01", "time": "09:00", "who": "dentist", "note": "checkup"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "message", "text": "Book me a meeting with the landlord on 2024-10-03 at 14:00 about the leak."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "calendar", "rows": [
+      {"date": "2024-10-03", "time": "14:00", "who": "landlord", "note": "leak"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Booked the landlord meeting."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "calendar", "count": 2},
+    {"type": "row", "table": "calendar", "where": {"who": "landlord"}, "has": {"date": "2024-10-03"}}
+  ],
+  "max_steps": 3,
+  "about": "Adds an appointment row with date, time, and a short note."
+}

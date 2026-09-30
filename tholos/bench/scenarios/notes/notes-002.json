@@ -1,0 +1,22 @@
+{
+  "id": "notes-002",
+  "category": "notes",
+  "template": "b-note-write",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You write and update notes in the workspace.", "tools": ["note_read", "note_write", "finish"], "max_steps": 4}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Meeting notes", "details": "Create a note titled 'Team standup 2024-09-15' that records: Mira finished the report, Tom is blocked on the API, and Lee will review the draft."},
+  "reference": [
+    {"tool": "note_write", "args": {"title": "Team standup 2024-09-15", "text": "Mira finished the report. Tom is blocked on the API. Lee will review the draft.", "mode": "replace"}},
+    {"tool": "finish", "args": {"summary": "Wrote the standup notes."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Team standup 2024-09-15", "contains": ["blocked on the API"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 4,
+  "about": "Writes a new note with meeting notes."
+}

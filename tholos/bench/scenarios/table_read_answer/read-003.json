@@ -1,0 +1,41 @@
+{
+  "id": "read-003",
+  "category": "table_read_answer",
+  "template": "b-read-count",
+  "agent": "Triage",
+  "workspace": {
+    "agents": [
+      {"name": "Triage", "role": "You read the bug tracker and answer short questions about open issues.", "tools": ["table_read", "search", "finish"], "max_steps": 4}
+    ],
+    "tables": [
+      {"name": "bugs", "columns": ["id", "title", "priority", "status"], "rows": [
+        {"id": "B1", "title": "login loop on mobile", "priority": "critical", "status": "open"},
+        {"id": "B2", "title": "typo in footer", "priority": "low", "status": "open"},
+        {"id": "B3", "title": "csv export drops accents", "priority": "critical", "status": "open"},
+        {"id": "B4", "title": "search is slow", "priority": "medium", "status": "closed"},
+        {"id": "B5", "title": "crash on empty table", "priority": "critical", "status": "open"},
+        {"id": "B6", "title": "wrong date format", "priority": "medium", "status": "open"},
+        {"id": "B7", "title": "dark mode flicker", "priority": "low", "status": "closed"},
+        {"id": "B8", "title": "api returns 500", "priority": "critical", "status": "open"},
+        {"id": "B9", "title": "tooltip overlaps", "priority": "low", "status": "open"},
+        {"id": "B10", "title": "export button missing", "priority": "medium", "status": "open"},
+        {"id": "B11", "title": "memory leak in worker", "priority": "high", "status": "open"},
+        {"id": "B12", "title": "docs outdated", "priority": "low", "status": "closed"},
+        {"id": "B13", "title": "race in scheduler", "priority": "high", "status": "open"},
+        {"id": "B14", "title": "json parse error", "priority": "critical", "status": "closed"},
+        {"id": "B15", "title": "favicon 404", "priority": "low", "status": "open"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Critical open bugs", "details": "How many bugs are both critical and still open?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "bugs", "query": "priority:critical status:open", "limit": null}},
+    {"tool": "finish", "args": {"summary": "4 critical bugs are still open."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["4 critical"]}
+  ],
+  "max_steps": 4,
+  "about": "Reads a bug tracker and reports how many bugs are critical and open."
+}

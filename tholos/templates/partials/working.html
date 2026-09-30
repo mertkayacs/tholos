@@ -1,0 +1,18 @@
+{% if not running %}
+<p class="empty">No agent is working right now.</p>
+{% endif %}
+{% for run in running %}
+<div class="card board-card">
+  <p>
+    <span class="badge working"><span class="dot" aria-hidden="true"></span>Working</span>
+    <a href="/runs/{{ run.id }}">#{{ run.id }}</a>
+  </p>
+  <p><a href="/agents/{{ run.agent|urlquote }}">{{ run.agent }}</a></p>
+  {% if run.step %}
+  <p class="small">{{ run.step.thought }}</p>
+  <p class="small mono muted">{{ run.step.tool }}</p>
+  {% else %}
+  <p class="small muted">Starting up.</p>
+  {% endif %}
+</div>
+{% endfor %}

@@ -1,0 +1,34 @@
+{
+  "id": "approval-003",
+  "category": "approval",
+  "template": "b-approval-ok",
+  "agent": "Editor",
+  "workspace": {
+    "agents": [
+      {"name": "Editor", "role": "You update rows, but updating needs the owner's approval.", "tools": ["table_read", "table_update", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "products", "columns": ["name", "price"], "rows": [
+        {"name": "oat milk 1L", "price": 3.5},
+        {"name": "sourdough loaf", "price": 6.0}
+      ]}
+    ],
+    "rules": [
+      {"agent": "*", "tool": "table_update", "match": "*", "decision": "ask"}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Raise oat milk price", "details": "Raise the price of oat milk 1L to 3.9."},
+  "respond": {"approve": true},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "products", "query": "name:oat", "limit": null}},
+    {"tool": "table_update", "args": {"table": "products", "row": 1, "values": {"name": null, "price": 3.9}}},
+    {"tool": "finish", "args": {"summary": "Raised the oat milk price."}}
+  ],
+  "expect": [
+    {"type": "approval", "tool": "table_update"},
+    {"type": "row", "table": "products", "where": {"name": "oat milk 1L"}, "has": {"price": 3.9}},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Updates a price after the owner approves the table_update."
+}

@@ -1,0 +1,37 @@
+{
+  "name": "Research desk",
+  "description": "Collect sources, score new leads, and write a weekly brief.",
+  "agents": [
+    {
+      "name": "Scout",
+      "role": "You check the sources listed in the Sources note and add new items to leads. You avoid duplicate URLs and hand each new batch to Analyst.",
+      "tools": ["table_read", "table_add", "note_read", "task_add", "web_fetch", "finish"],
+      "max_steps": 12,
+      "schedules": [{"every": "2h", "prompt": "Read Sources and fetch each source. Add new items to leads with status new, then hand the batch to Analyst."}]
+    },
+    {
+      "name": "Analyst",
+      "role": "You score new leads against the Focus note, fetching their pages when needed. You fill summary and score from 1 to 5, mark each lead scored, and hand the top items to Writer.",
+      "tools": ["table_read", "table_update", "note_read", "task_add", "web_fetch", "finish"],
+      "max_steps": 12,
+      "schedules": []
+    },
+    {
+      "name": "Writer",
+      "role": "You write the Weekly brief note from leads with a score of at least 4. You read the existing brief before replacing it and tell the owner when the new brief is ready.",
+      "tools": ["table_read", "note_read", "note_write", "task_add", "finish"],
+      "max_steps": 12,
+      "schedules": [{"every": "fri 16:00", "prompt": "Write Weekly brief from leads with score >= 4. Add a task to you announcing that the brief is ready."}]
+    }
+  ],
+  "tables": [{"name": "leads", "columns": ["title", "url", "source", "status", "score", "summary"]}],
+  "notes": [
+    {"title": "Sources", "body": "Hacker News front page: https://news.ycombinator.com/\narXiv cs.AI recent: https://arxiv.org/list/cs.AI/recent\nHugging Face papers: https://huggingface.co/papers"},
+    {"title": "Focus", "body": "Small language models, agents, and tool use."}
+  ],
+  "rules": [
+    {"agent": "*", "tool": "web_fetch", "match": "news.ycombinator.com", "decision": "allow"},
+    {"agent": "*", "tool": "web_fetch", "match": "arxiv.org", "decision": "allow"},
+    {"agent": "*", "tool": "web_fetch", "match": "huggingface.co", "decision": "allow"}
+  ]
+}

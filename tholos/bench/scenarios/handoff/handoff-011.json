@@ -1,0 +1,31 @@
+{
+  "id": "handoff-011",
+  "category": "handoff",
+  "template": "b-handoff-4",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You review volunteer signups and hand confirmed ones to the Scheduler.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Scheduler", "role": "You assign shifts to confirmed volunteers.", "tools": ["table_read", "table_update", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "signups", "columns": ["name", "shift", "status"], "rows": [
+        {"name": "Rosa Diaz", "shift": "morning", "status": "confirmed"},
+        {"name": "Marco Bell", "shift": "evening", "status": "pending"},
+        {"name": "Tessa Lang", "shift": "morning", "status": "confirmed"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off confirmed volunteers", "details": "Find the confirmed volunteers and hand them to the Scheduler. Include names and shifts."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "signups", "query": "status:confirmed", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Scheduler", "title": "Assign shifts to confirmed volunteers", "details": "Assign shifts to these confirmed volunteers: Rosa Diaz (morning) and Tessa Lang (morning)."}},
+    {"tool": "finish", "args": {"summary": "Handed the confirmed volunteers to the Scheduler."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Scheduler", "title_contains": "shifts"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds confirmed volunteers and hands them to the Scheduler."
+}

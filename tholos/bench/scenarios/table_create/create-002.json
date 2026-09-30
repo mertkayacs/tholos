@@ -1,0 +1,27 @@
+{
+  "id": "create-002",
+  "category": "table_create",
+  "template": "b-create-table",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You create new tables and fill them from the owner's instructions.", "tools": ["table_create", "table_add", "finish"], "max_steps": 5}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Start a pantry list", "details": "Create a table called 'pantry' with columns: item, qty, expires. Add: oats (qty 4, expires 2025-01) and rice (qty 2, expires 2024-12)."},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "pantry", "columns": ["item", "qty", "expires"]}},
+    {"tool": "table_add", "args": {"table": "pantry", "rows": [
+      {"item": "oats", "qty": 4, "expires": "2025-01"},
+      {"item": "rice", "qty": 2, "expires": "2024-12"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Created the pantry table and added two items."}}
+  ],
+  "expect": [
+    {"type": "table_exists", "table": "pantry", "columns": ["item", "qty", "expires"]},
+    {"type": "rows", "table": "pantry", "count": 2},
+    {"type": "row", "table": "pantry", "where": {"item": "oats"}, "has": {"qty": 4}}
+  ],
+  "max_steps": 5,
+  "about": "Creates a pantry table and fills it with two stocked items."
+}

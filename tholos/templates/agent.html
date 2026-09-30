@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ agent.name }} · Tholos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ agent.name }}</h1>
+  {% if agent.status == "working" %}
+  <span class="badge working"><span class="dot" aria-hidden="true"></span>Working</span>
+  {% elif agent.status == "waiting" %}
+  <span class="badge waiting"><svg class="icon" aria-hidden="true"><use href="#i-hand"></use></svg>Waiting</span>
+  {% elif agent.status == "paused" %}
+  <span class="badge">Paused</span>
+  {% else %}
+  <span class="badge">Idle</span>
+  {% endif %}
+</div>
+
+<h2>Profile</h2>
+<div class="card" id="agent-form-wrap">
+  {% include "partials/agent_form.html" %}
+</div>
+
+<h2>Schedules</h2>
+<div class="card" id="schedules-wrap">
+  {% include "partials/schedules.html" %}
+</div>
+
+<h2>Memory</h2>
+<div class="card" id="memories-wrap">
+  {% include "partials/memories.html" %}
+</div>
+
+<h2>Recent runs</h2>
+{% if not runs %}<p class="empty">This agent has not run yet.</p>{% endif %}
+{% for run in runs %}
+<div class="card">
+  <p>
+    <a href="/runs/{{ run.id }}">#{{ run.id }}</a>
+    <span class="badge">{{ run.status }}</span>
+    <span class="small muted num">{{ run.created_at|localtime }}</span>
+  </p>
+  <p class="small">{{ run.trigger }}</p>
+</div>
+{% endfor %}
+{% endblock %}

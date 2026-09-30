@@ -1,0 +1,51 @@
+{% if error %}<p class="error" role="alert" style="color: var(--danger)">{{ error }}</p>{% endif %}
+<form hx-post="{% if agent %}/agents/{{ agent.name|urlquote }}{% else %}/agents{% endif %}"
+      hx-target="#agent-form-wrap" method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% if not agent %}
+  <div class="field">
+    <label for="agent-name">Name</label>
+    <input type="text" id="agent-name" name="name" value="{{ name or '' }}" required>
+  </div>
+  {% endif %}
+  <div class="field">
+    <label for="agent-role">Role</label>
+    <textarea id="agent-role" name="role" required>{{ agent.role if agent else role or '' }}</textarea>
+    <p class="hint">What this agent does, in one or two plain sentences.</p>
+  </div>
+  <div class="field">
+    <label for="agent-model">Model</label>
+    <select id="agent-model" name="model_id">
+      <option value="">No model</option>
+      {% for model in models %}
+      <option value="{{ model.id }}"{% if agent and agent.model_id == model.id %} selected{% endif %}>{{ model.name }} ({{ model.model }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <fieldset class="field" style="border: 0; padding: 0; margin: 0 0 16px">
+    <legend style="font-weight: 600; margin-bottom: 4px">Tools</legend>
+    <div class="checks">
+      {% for tool in tool_names %}
+      <label><input type="checkbox" name="tools" value="{{ tool }}"
+        {% if agent and tool in agent.tools %} checked{% endif %}
+        {% if not agent and tool in ["table_read", "note_read", "search", "finish"] %} checked{% endif %}>
+        {{ tool }}</label>
+      {% endfor %}
+    </div>
+  </fieldset>
+  <div class="form-row">
+    <div class="field" style="max-width: 140px">
+      <label for="agent-max-steps">Max steps</label>
+      <input type="number" id="agent-max-steps" name="max_steps" min="1" max="100"
+             value="{{ agent.max_steps if agent else max_steps or 12 }}">
+    </div>
+    {% if agent %}
+    <div class="field">
+      <label><input type="checkbox" name="paused" value="1"{% if agent.paused %} checked{% endif %}
+        style="width: 16px; height: 16px; accent-color: var(--ink)"> Paused</label>
+      <p class="hint">A paused agent does not start runs.</p>
+    </div>
+    {% endif %}
+  </div>
+  <button class="btn primary" type="submit">{% if agent %}Save agent{% else %}Create agent{% endif %}</button>
+</form>

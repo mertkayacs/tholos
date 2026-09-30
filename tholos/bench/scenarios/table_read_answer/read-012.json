@@ -1,0 +1,36 @@
+{
+  "id": "read-012",
+  "category": "table_read_answer",
+  "template": "b-read-filter",
+  "agent": "Scribe",
+  "workspace": {
+    "agents": [
+      {"name": "Scribe", "role": "You read the repository table and report matching entries.", "tools": ["table_read", "finish"], "max_steps": 4}
+    ],
+    "tables": [
+      {"name": "repos", "columns": ["name", "language", "stars", "license"], "rows": [
+        {"name": "quill", "language": "Rust", "stars": 820, "license": "MIT"},
+        {"name": "ember-db", "language": "Go", "stars": 41, "license": "Apache-2.0"},
+        {"name": "tide", "language": "Python", "stars": 1300, "license": "MIT"},
+        {"name": "loom", "language": "Rust", "stars": 205, "license": "MIT"},
+        {"name": "fennel", "language": "TypeScript", "stars": 960, "license": "MIT"},
+        {"name": "cinder", "language": "C", "stars": 77, "license": "GPL-3.0"},
+        {"name": "moss", "language": "Go", "stars": 512, "license": "MIT"},
+        {"name": "wren-cli", "language": "Rust", "stars": 66, "license": "Apache-2.0"},
+        {"name": "solace", "language": "Python", "stars": 388, "license": "MIT"},
+        {"name": "dune", "language": "Zig", "stars": 1540, "license": "MIT"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Rust repos", "details": "Which repositories are written in Rust?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "repos", "query": "language:Rust", "limit": null}},
+    {"tool": "finish", "args": {"summary": "quill, loom, and wren-cli are written in Rust."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["quill", "loom", "wren-cli"]}
+  ],
+  "max_steps": 4,
+  "about": "Reads a repository table and reports which ones use Rust."
+}

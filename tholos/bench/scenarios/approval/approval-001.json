@@ -1,0 +1,31 @@
+{
+  "id": "approval-001",
+  "category": "approval",
+  "template": "b-approval-ok",
+  "agent": "Scout",
+  "workspace": {
+    "agents": [
+      {"name": "Scout", "role": "You research topics on the web and record facts in the workspace.", "tools": ["web_fetch", "table_add", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "facts", "columns": ["topic", "fact"], "rows": []}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Record a fact", "details": "Fetch https://almanac.test/tides and record the high tide time in the facts table."},
+  "fixtures": {
+    "https://almanac.test/tides": "<html><head><title>Tides</title></head><body><h1>Tide times</h1><p>High tide today is at 14:20.</p></body></html>"
+  },
+  "respond": {"approve": true},
+  "reference": [
+    {"tool": "web_fetch", "args": {"url": "https://almanac.test/tides"}},
+    {"tool": "table_add", "args": {"table": "facts", "rows": [{"topic": "tides", "fact": "High tide today is at 14:20."}]}},
+    {"tool": "finish", "args": {"summary": "Recorded the high tide time."}}
+  ],
+  "expect": [
+    {"type": "approval", "tool": "web_fetch"},
+    {"type": "row", "table": "facts", "where": {"topic": "tides"}, "has": {"fact": {"contains": "14:20"}}},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Fetches a page after approval and records a fact from it."
+}

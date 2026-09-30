@@ -1,0 +1,33 @@
+{
+  "id": "add-009",
+  "category": "table_add",
+  "template": "b-add-no-dup",
+  "agent": "Scout",
+  "workspace": {
+    "agents": [
+      {"name": "Scout", "role": "You add new tasks to the task log, skipping any that are already listed.", "tools": ["table_read", "table_add", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "tasks", "columns": ["title", "priority", "status"], "rows": [
+        {"title": "fix login", "priority": "high", "status": "todo"},
+        {"title": "update docs", "priority": "low", "status": "todo"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Log tasks", "details": "Log these tasks: 'fix login' is already there, so skip it. Add 'ship v1.2' with priority high, and 'write changelog' with priority low. All new ones start as todo."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "tasks", "query": null, "limit": null}},
+    {"tool": "table_add", "args": {"table": "tasks", "rows": [
+      {"title": "ship v1.2", "priority": "high", "status": "todo"},
+      {"title": "write changelog", "priority": "low", "status": "todo"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Logged ship v1.2 and write changelog."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "tasks", "count": 4},
+    {"type": "row", "table": "tasks", "where": {"title": "ship v1.2"}, "has": {"priority": "high"}},
+    {"type": "row", "table": "tasks", "where": {"title": "write changelog"}, "has": {"status": "todo"}}
+  ],
+  "max_steps": 5,
+  "about": "Skips a duplicate task title while adding the genuinely new ones."
+}

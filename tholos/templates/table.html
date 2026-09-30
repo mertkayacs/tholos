@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ sheet.name }} · Tholos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ sheet.name }}</h1>
+  <span class="spacer"></span>
+  <a class="btn secondary" href="/tables/{{ sheet.name|urlquote }}.csv">
+    <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>CSV</a>
+  <a class="btn secondary" href="/tables/{{ sheet.name|urlquote }}.xlsx">
+    <svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>XLSX</a>
+</div>
+<div id="grid-wrap">
+  {% include "partials/table_grid.html" %}
+</div>
+<h2>Recent changes</h2>
+{% if not changes %}<p class="muted">No changes yet.</p>{% endif %}
+{% for change in changes %}
+<p class="small muted">
+  {{ change.actor }} · version {{ change.version }} · <span class="num">{{ change.at|localtime }}</span>
+</p>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,36 @@
+{
+  "id": "update-006",
+  "category": "table_update",
+  "template": "b-update-status2",
+  "agent": "Audit",
+  "workspace": {
+    "agents": [
+      {"name": "Audit", "role": "You update invoice payment status by reading first and changing only unpaid rows.", "tools": ["table_read", "table_update", "finish"], "max_steps": 5}
+    ],
+    "tables": [
+      {"name": "invoices", "columns": ["number", "client", "status"], "rows": [
+        {"number": "INV-40", "client": "Brighton Co", "status": "unpaid"},
+        {"number": "INV-41", "client": "Fernwood Ltd", "status": "paid"},
+        {"number": "INV-42", "client": "Ashgrove", "status": "unpaid"},
+        {"number": "INV-43", "client": "Hillside", "status": "unpaid"},
+        {"number": "INV-44", "client": "Meadowview", "status": "paid"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Mark paid invoices", "details": "Mark all unpaid invoices as paid. Leave the paid ones alone."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "invoices", "query": "status:unpaid", "limit": null}},
+    {"tool": "table_update", "args": {"table": "invoices", "row": 1, "values": {"number": null, "client": null, "status": "paid"}}},
+    {"tool": "table_update", "args": {"table": "invoices", "row": 3, "values": {"number": null, "client": null, "status": "paid"}}},
+    {"tool": "table_update", "args": {"table": "invoices", "row": 4, "values": {"number": null, "client": null, "status": "paid"}}},
+    {"tool": "finish", "args": {"summary": "Marked the unpaid invoices as paid."}}
+  ],
+  "expect": [
+    {"type": "row", "table": "invoices", "where": {"number": "INV-40"}, "has": {"status": "paid"}},
+    {"type": "row", "table": "invoices", "where": {"number": "INV-42"}, "has": {"status": "paid"}},
+    {"type": "row", "table": "invoices", "where": {"number": "INV-43"}, "has": {"status": "paid"}},
+    {"type": "row", "table": "invoices", "where": {"number": "INV-41"}, "has": {"status": "paid"}}
+  ],
+  "max_steps": 6,
+  "about": "Marks unpaid invoices as paid and leaves paid ones untouched."
+}

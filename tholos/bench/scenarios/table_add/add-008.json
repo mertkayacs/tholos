@@ -1,0 +1,29 @@
+{
+  "id": "add-008",
+  "category": "table_add",
+  "template": "b-add-rows3",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You add new volunteers to the roster.", "tools": ["table_add", "finish"], "max_steps": 3}
+    ],
+    "tables": [
+      {"name": "volunteers", "columns": ["name", "shift", "hours"], "rows": [
+        {"name": "Rosa Diaz", "shift": "morning", "hours": 4}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "New volunteer", "details": "Add volunteer 'Marco Bell' on the evening shift for 3 hours."},
+  "reference": [
+    {"tool": "table_add", "args": {"table": "volunteers", "rows": [
+      {"name": "Marco Bell", "shift": "evening", "hours": 3}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Added Marco Bell to the roster."}}
+  ],
+  "expect": [
+    {"type": "rows", "table": "volunteers", "count": 2},
+    {"type": "row", "table": "volunteers", "where": {"name": "Marco Bell"}, "has": {"shift": "evening"}}
+  ],
+  "max_steps": 3,
+  "about": "Adds a volunteer with name, shift, and numeric hours."
+}

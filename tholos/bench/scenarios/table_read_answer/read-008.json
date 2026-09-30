@@ -1,0 +1,36 @@
+{
+  "id": "read-008",
+  "category": "table_read_answer",
+  "template": "b-read-filter",
+  "agent": "Finder",
+  "workspace": {
+    "agents": [
+      {"name": "Finder", "role": "You search the contact list and report specific people.", "tools": ["table_read", "finish"], "max_steps": 4}
+    ],
+    "tables": [
+      {"name": "contacts", "columns": ["name", "city", "field"], "rows": [
+        {"name": "Omar Haddad", "city": "Beirut", "field": "medicine"},
+        {"name": "Ingrid Larsen", "city": "Oslo", "field": "energy"},
+        {"name": "Tomas Reza", "city": "Lisbon", "field": "education"},
+        {"name": "Fatima Bello", "city": "Lagos", "field": "medicine"},
+        {"name": "Hana Kim", "city": "Seoul", "field": "design"},
+        {"name": "Elias Voss", "city": "Hamburg", "field": "energy"},
+        {"name": "Priya Nair", "city": "Kochi", "field": "medicine"},
+        {"name": "Marta Silva", "city": "Porto", "field": "education"},
+        {"name": "Jonas Weber", "city": "Zurich", "field": "design"},
+        {"name": "Amara Diallo", "city": "Dakar", "field": "medicine"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Medicine contacts", "details": "List the names of everyone whose field is medicine."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "contacts", "query": "field:medicine", "limit": null}},
+    {"tool": "finish", "args": {"summary": "Omar Haddad, Fatima Bello, Priya Nair, and Amara Diallo work in medicine."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["Omar Haddad"]}
+  ],
+  "max_steps": 4,
+  "about": "Reads a contact list and reports everyone in a given field."
+}

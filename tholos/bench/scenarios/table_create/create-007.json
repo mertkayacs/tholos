@@ -1,0 +1,26 @@
+{
+  "id": "create-007",
+  "category": "table_create",
+  "template": "b-create-table3",
+  "agent": "Builder",
+  "workspace": {
+    "agents": [
+      {"name": "Builder", "role": "You create new tables to track suppliers and fill them.", "tools": ["table_create", "table_add", "finish"], "max_steps": 5}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Supplier list", "details": "Create a table called 'suppliers' with columns: name, product, lead_days, contact. Add: 'Nordwind', product 'steel', lead_days 7, contact 'sales@nordwind.example'."},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "suppliers", "columns": ["name", "product", "lead_days", "contact"]}},
+    {"tool": "table_add", "args": {"table": "suppliers", "rows": [
+      {"name": "Nordwind", "product": "steel", "lead_days": 7, "contact": "sales@nordwind.example"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Created the suppliers table with one supplier."}}
+  ],
+  "expect": [
+    {"type": "table_exists", "table": "suppliers", "columns": ["name", "product", "lead_days", "contact"]},
+    {"type": "rows", "table": "suppliers", "count": 1},
+    {"type": "row", "table": "suppliers", "where": {"name": "Nordwind"}, "has": {"lead_days": 7}}
+  ],
+  "max_steps": 5,
+  "about": "Creates a supplier table and fills it with one supplier."
+}

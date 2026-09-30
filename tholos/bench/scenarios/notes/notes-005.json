@@ -1,0 +1,26 @@
+{
+  "id": "notes-005",
+  "category": "notes",
+  "template": "b-note-append",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You write and update notes in the workspace, keeping existing content when appending.", "tools": ["note_read", "note_write", "finish"], "max_steps": 5}
+    ],
+    "notes": [
+      {"title": "Ideas", "body": "A weekly newsletter about local plants."}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Add an idea", "details": "Append to the 'Ideas' note: a printable planting calendar for the community garden. Keep the existing idea."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Ideas"}},
+    {"tool": "note_write", "args": {"title": "Ideas", "text": "\nA printable planting calendar for the community garden.", "mode": "append"}},
+    {"tool": "finish", "args": {"summary": "Appended the new idea."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Ideas", "contains": ["local plants", "planting calendar"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Appends a new idea to an existing note and keeps the old one."
+}

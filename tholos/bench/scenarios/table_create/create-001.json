@@ -1,0 +1,27 @@
+{
+  "id": "create-001",
+  "category": "table_create",
+  "template": "b-create-table",
+  "agent": "Builder",
+  "workspace": {
+    "agents": [
+      {"name": "Builder", "role": "You create new tables with sensible columns and fill them from the owner's instructions.", "tools": ["table_create", "table_add", "finish"], "max_steps": 5}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Track reading list", "details": "Create a table called 'reading' to track books. It needs columns: title, author, status. Then add two books: 'The Quiet Harbor' by E. Marr with status reading, and 'Silent Meadow' by A. Roth with status queued."},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "reading", "columns": ["title", "author", "status"]}},
+    {"tool": "table_add", "args": {"table": "reading", "rows": [
+      {"title": "The Quiet Harbor", "author": "E. Marr", "status": "reading"},
+      {"title": "Silent Meadow", "author": "A. Roth", "status": "queued"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Created the reading table and added two books."}}
+  ],
+  "expect": [
+    {"type": "table_exists", "table": "reading", "columns": ["title", "author", "status"]},
+    {"type": "rows", "table": "reading", "count": 2},
+    {"type": "row", "table": "reading", "where": {"title": "The Quiet Harbor"}, "has": {"status": "reading"}}
+  ],
+  "max_steps": 5,
+  "about": "Creates a reading table with three columns and fills it with two books."
+}

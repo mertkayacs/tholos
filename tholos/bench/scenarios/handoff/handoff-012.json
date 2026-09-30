@@ -1,0 +1,31 @@
+{
+  "id": "handoff-012",
+  "category": "handoff",
+  "template": "b-handoff-4",
+  "agent": "Audit",
+  "workspace": {
+    "agents": [
+      {"name": "Audit", "role": "You review support tickets and hand unresolved ones to the Responder.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Responder", "role": "You reply to open support tickets.", "tools": ["note_write", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "tickets", "columns": ["id", "subject", "status"], "rows": [
+        {"id": "T1", "subject": "cannot log in", "status": "open"},
+        {"id": "T2", "subject": "billing question", "status": "resolved"},
+        {"id": "T3", "subject": "feature request", "status": "open"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off open tickets", "details": "Find the open tickets and hand them to the Responder. Include ids and subjects."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "tickets", "query": "status:open", "limit": null}},
+    {"tool": "task_add", "args": {"to": "Responder", "title": "Reply to open tickets", "details": "Reply to these open tickets: T1 cannot log in, and T3 feature request."}},
+    {"tool": "finish", "args": {"summary": "Handed the open tickets to the Responder."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Responder", "title_contains": "open tickets"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds open tickets and hands them to the Responder."
+}

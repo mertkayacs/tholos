@@ -1,0 +1,31 @@
+{
+  "id": "update-009",
+  "category": "table_update",
+  "template": "b-update-field",
+  "agent": "Registrar",
+  "workspace": {
+    "agents": [
+      {"name": "Registrar", "role": "You update student records by reading first and changing only the row asked for.", "tools": ["table_read", "table_update", "finish"], "max_steps": 4}
+    ],
+    "tables": [
+      {"name": "students", "columns": ["name", "grade", "homeroom"], "rows": [
+        {"name": "Ada Lovelace", "grade": "10", "homeroom": "West"},
+        {"name": "Bo Tan", "grade": "11", "homeroom": "East"},
+        {"name": "Cora Ellis", "grade": "10", "homeroom": "West"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Move Bo's homeroom", "details": "Bo Tan moved to the North homeroom. Update his row only."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "students", "query": "name:Bo", "limit": null}},
+    {"tool": "table_update", "args": {"table": "students", "row": 2, "values": {"name": null, "grade": null, "homeroom": "North"}}},
+    {"tool": "finish", "args": {"summary": "Moved Bo Tan to the North homeroom."}}
+  ],
+  "expect": [
+    {"type": "row", "table": "students", "where": {"name": "Bo Tan"}, "has": {"homeroom": "North"}},
+    {"type": "row", "table": "students", "where": {"name": "Ada Lovelace"}, "has": {"homeroom": "West"}},
+    {"type": "row", "table": "students", "where": {"name": "Cora Ellis"}, "has": {"homeroom": "West"}}
+  ],
+  "max_steps": 4,
+  "about": "Updates one student's homeroom and leaves the others unchanged."
+}

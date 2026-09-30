@@ -1,0 +1,31 @@
+{
+  "id": "handoff-009",
+  "category": "handoff",
+  "template": "b-handoff-3",
+  "agent": "Clerk",
+  "workspace": {
+    "agents": [
+      {"name": "Clerk", "role": "You review expense reports and hand large ones to the Approver.", "tools": ["table_read", "task_add", "finish"], "max_steps": 5},
+      {"name": "Approver", "role": "You approve or reject large expenses.", "tools": ["table_read", "table_update", "finish"], "max_steps": 6}
+    ],
+    "tables": [
+      {"name": "expenses", "columns": ["id", "submitter", "amount", "status"], "rows": [
+        {"id": "E1", "submitter": "Nora", "amount": 45, "status": "submitted"},
+        {"id": "E2", "submitter": "Rui", "amount": 520, "status": "submitted"},
+        {"id": "E3", "submitter": "Lena", "amount": 980, "status": "submitted"}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Hand off large expenses", "details": "Find submitted expenses of 500 or more and hand them to the Approver. Include ids, submitters, and amounts."},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "expenses", "query": null, "limit": null}},
+    {"tool": "task_add", "args": {"to": "Approver", "title": "Approve large expenses", "details": "Review these submitted expenses of 500 or more: E2 from Rui (520) and E3 from Lena (980)."}},
+    {"tool": "finish", "args": {"summary": "Handed the large expenses to the Approver."}}
+  ],
+  "expect": [
+    {"type": "task", "to": "Approver", "title_contains": "Approve"},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Finds large expenses and hands them to the Approver."
+}

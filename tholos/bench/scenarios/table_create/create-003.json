@@ -1,0 +1,26 @@
+{
+  "id": "create-003",
+  "category": "table_create",
+  "template": "b-create-table",
+  "agent": "Planner",
+  "workspace": {
+    "agents": [
+      {"name": "Planner", "role": "You create new tables to organize projects and fill them.", "tools": ["table_create", "table_add", "finish"], "max_steps": 5}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Project tracker", "details": "Create a table called 'projects' with columns: name, owner, deadline, status. Add one project: 'site relaunch' owned by Mira, deadline 2024-11-01, status planning."},
+  "reference": [
+    {"tool": "table_create", "args": {"table": "projects", "columns": ["name", "owner", "deadline", "status"]}},
+    {"tool": "table_add", "args": {"table": "projects", "rows": [
+      {"name": "site relaunch", "owner": "Mira", "deadline": "2024-11-01", "status": "planning"}
+    ]}},
+    {"tool": "finish", "args": {"summary": "Created the projects table with one project."}}
+  ],
+  "expect": [
+    {"type": "table_exists", "table": "projects", "columns": ["name", "owner", "deadline", "status"]},
+    {"type": "rows", "table": "projects", "count": 1},
+    {"type": "row", "table": "projects", "where": {"name": "site relaunch"}, "has": {"owner": "Mira"}}
+  ],
+  "max_steps": 5,
+  "about": "Creates a project tracker table with four columns and one project."
+}

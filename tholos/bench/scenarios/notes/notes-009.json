@@ -1,0 +1,25 @@
+{
+  "id": "notes-009",
+  "category": "notes",
+  "template": "b-note-read",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You read notes and report what they say.", "tools": ["note_read", "finish"], "max_steps": 3}
+    ],
+    "notes": [
+      {"title": "Gate code", "body": "The community garden gate code is 1847. Please relock after leaving."}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Gate code", "details": "What is the garden gate code? Read the 'Gate code' note."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Gate code"}},
+    {"tool": "finish", "args": {"summary": "The garden gate code is 1847."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["1847"]}
+  ],
+  "max_steps": 3,
+  "about": "Reads a note and reports the gate code."
+}

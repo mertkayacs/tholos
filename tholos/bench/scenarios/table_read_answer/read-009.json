@@ -1,0 +1,34 @@
+{
+  "id": "read-009",
+  "category": "table_read_answer",
+  "template": "b-read-filter",
+  "agent": "Audit",
+  "workspace": {
+    "agents": [
+      {"name": "Audit", "role": "You read the order log and report rows that match a condition.", "tools": ["table_read", "finish"], "max_steps": 4}
+    ],
+    "tables": [
+      {"name": "orders", "columns": ["order_id", "customer", "status", "total"], "rows": [
+        {"order_id": "O-1001", "customer": "Rhea B", "status": "shipped", "total": 88},
+        {"order_id": "O-1002", "customer": "Kai N", "status": "pending", "total": 145},
+        {"order_id": "O-1003", "customer": "Lena M", "status": "shipped", "total": 62},
+        {"order_id": "O-1004", "customer": "Dev A", "status": "pending", "total": 210},
+        {"order_id": "O-1005", "customer": "Zara K", "status": "cancelled", "total": 30},
+        {"order_id": "O-1006", "customer": "Milo T", "status": "shipped", "total": 99},
+        {"order_id": "O-1007", "customer": "Anya S", "status": "pending", "total": 77},
+        {"order_id": "O-1008", "customer": "Finn R", "status": "shipped", "total": 121}
+      ]}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Pending orders", "details": "Which orders are still pending, and who are the customers?"},
+  "reference": [
+    {"tool": "table_read", "args": {"table": "orders", "query": "status:pending", "limit": null}},
+    {"tool": "finish", "args": {"summary": "Pending orders are O-1002 for Kai N, O-1004 for Dev A, and O-1007 for Anya S."}}
+  ],
+  "expect": [
+    {"type": "finished"},
+    {"type": "finish_contains", "any": ["O-1002", "O-1004", "O-1007"]}
+  ],
+  "max_steps": 4,
+  "about": "Reads an order log and reports which orders are pending."
+}

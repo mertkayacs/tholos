@@ -1,0 +1,26 @@
+{
+  "id": "notes-012",
+  "category": "notes",
+  "template": "b-note-replace",
+  "agent": "Keeper",
+  "workspace": {
+    "agents": [
+      {"name": "Keeper", "role": "You rewrite notes by reading them first, then replacing the content.", "tools": ["note_read", "note_write", "finish"], "max_steps": 5}
+    ],
+    "notes": [
+      {"title": "Office hours", "body": "Monday to Thursday, 9 to 5."}
+    ]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "New office hours", "details": "Rewrite the 'Office hours' note to: Monday to Friday, 8:30 to 4:30. Read it first, then replace it."},
+  "reference": [
+    {"tool": "note_read", "args": {"title": "Office hours"}},
+    {"tool": "note_write", "args": {"title": "Office hours", "text": "Monday to Friday, 8:30 to 4:30.", "mode": "replace"}},
+    {"tool": "finish", "args": {"summary": "Updated the office hours."}}
+  ],
+  "expect": [
+    {"type": "note", "title": "Office hours", "contains": ["8:30 to 4:30"], "not_contains": ["9 to 5"]},
+    {"type": "finished"}
+  ],
+  "max_steps": 5,
+  "about": "Reads a note and replaces it with new office hours."
+}
