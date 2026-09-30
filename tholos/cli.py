@@ -65,14 +65,8 @@ def main(argv: list[str] | None = None) -> None:
         finally:
             db.close()
         return
-    try:
-        os.environ["THOLOS_HOST"] = args.host
-        web = importlib.import_module("tholos.web")
-    except ModuleNotFoundError as exc:
-        if exc.name != "tholos.web":
-            raise
-        print("The web interface is not installed yet. The core CLI supports bench and export.")
-        return
+    os.environ["THOLOS_HOST"] = args.host
+    web = importlib.import_module("tholos.web")
     host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(args.host, args.host)
     host = f"[{host}]" if ":" in host else host
     lines = [f"Tholos: http://{host}:{args.port}"]

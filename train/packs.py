@@ -11,10 +11,11 @@ import argparse
 import json
 import sys
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 from pathlib import Path
 
 import httpx
+from pipeline import completed
 from templates import validate_pack
 
 PACK_SCHEMA = {
@@ -148,10 +149,16 @@ def main(argv=None):
     parser.add_argument("--out", required=True)
     parser.add_argument("--temperature", type=float, default=0.9)
     parser.add_argument("--limit", type=int, default=0, help="stop after N new packs")
+    parser.add_argument("--domains-limit", type=int, default=None, help="use the first N domains")
+    parser.add_argument("--deadline", type=float, default=None, help="stop new items at Unix time")
     args = parser.parse_args(argv)
 
     domains = [d.strip() for d in Path(args.domains).read_text(encoding="utf-8")
                .splitlines() if d.strip()]
+    if args.domains_limit is not None:
+        if args.domains_limit < 1:
+            parser.error("--domains-limit must be positive")
+        domains = domains[:args.domains_limit]
     keys = done_keys(args.out)
     jobs = [(domain, i) for domain in domains for i in range(args.per_domain)
             if (domain, i) not in keys]
@@ -178,20 +185,16 @@ def main(argv=None):
             written[0] += 1
         return True
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = {pool.submit(work, job): job for job in jobs}
-        for future in as_completed(futures):
-            job = futures[future]
-            try:
-                if not future.result():
-                    failed.append(job)
-            except Exception as exc:  # noqa: BLE001 - reported per job
-                failed.append(job)
-                print(f"job {job} crashed: {exc!r}", file=sys.stderr, flush=True)
+    # Open even on an expired deadline, so later stages can consume an empty checkpoint.
+    Path(args.out).touch(exist_ok=True)
+    for job, success in completed(work, jobs, args.workers, args.deadline):
+        if not success:
+            failed.append(job)
     print(f"wrote {written[0]} packs to {args.out}; {len(failed)} jobs failed")
     for job in failed[:20]:
         print("  failed:", job)
-    return 1 if failed else 0
+    expired = args.deadline is not None and time.time() >= args.deadline
+    return 1 if failed and not expired else 0
 
 
 if __name__ == "__main__":

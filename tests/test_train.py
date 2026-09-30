@@ -14,7 +14,9 @@ import importlib.util
 import json
 import random
 import sys
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -23,6 +25,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "train"))
 
 import build as B  # noqa: E402
+import packs as P  # noqa: E402
+import phrasing as F  # noqa: E402
+import pipeline as pipeline  # noqa: E402
+import rollout as R  # noqa: E402
 import templates as T  # noqa: E402
 
 spec = importlib.util.spec_from_file_location(
@@ -301,3 +307,279 @@ def test_build_split_again_different_seed():
     a = B.split_templates(results, 0.08, seed=1)[1]
     b = B.split_templates(results, 0.08, seed=2)[1]
     assert isinstance(a, set) and isinstance(b, set)
+
+
+def datagen_module():
+    spec = importlib.util.spec_from_file_location(
+        "datagen", ROOT / "train" / "kaggle" / "datagen" / "datagen.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def write_jsonl(path, items):
+    path.write_text("".join(json.dumps(item) + "\n" for item in items), encoding="utf-8")
+
+
+def read_jsonl(path):
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+@pytest.mark.parametrize("module", [P, F, R], ids=["packs", "phrasing", "rollout"])
+def test_deadline_flag_starts_no_network_items(module, tmp_path, monkeypatch):
+    def no_network(*args, **kwargs):
+        pytest.fail("work started after deadline")
+
+    scenarios = [T.t_notes_append(fixture_packs()[0], random.Random(i)) for i in range(10)]
+    source = tmp_path / "source.jsonl"
+    write_jsonl(source, scenarios)
+    out = tmp_path / "out.jsonl"
+    args = ["--base-url", "http://unused.test/v1", "--model", "fake",
+            "--out", str(out), "--deadline", "0"]
+    if module is P:
+        monkeypatch.setattr(P, "one_pack", no_network)
+        args += ["--domains-limit", "1"]
+    else:
+        args += ["--scenarios", str(source)]
+        if module is F:
+            monkeypatch.setattr(F, "process", no_network)
+            args += ["--fraction", "1"]
+        else:
+            monkeypatch.setattr(R, "run_one", no_network)
+            monkeypatch.setattr(R, "install_fixture_union", lambda _: None)
+    assert module.main(args) == 0
+    assert read_jsonl(out) == []
+
+
+def test_deadline_drains_all_in_flight_without_replenishing(monkeypatch):
+    expired = threading.Event()
+    barrier = threading.Barrier(3)
+    monkeypatch.setattr(
+        pipeline, "time", SimpleNamespace(time=lambda: 10 if expired.is_set() else 0)
+    )
+
+    def work(item):
+        barrier.wait(timeout=5)
+        expired.set()
+        return item * 2
+
+    results = list(pipeline.completed(work, range(100), workers=3, deadline=10))
+    assert sorted(results) == [(0, 0), (1, 2), (2, 4)]
+
+
+@pytest.mark.parametrize("module", [P, F, R], ids=["packs", "phrasing", "rollout"])
+def test_deadline_flushes_in_flight_and_cli_resumes(module, tmp_path, monkeypatch):
+    now = [0]
+    monkeypatch.setattr(pipeline, "time", SimpleNamespace(time=lambda: now[0]))
+    calls = []
+
+    def work(item):
+        calls.append(item)
+        now[0] = 10
+        return item
+
+    source = tmp_path / "source.jsonl"
+    scenarios = [T.t_notes_append(fixture_packs()[0], random.Random(i)) for i in range(4)]
+    write_jsonl(source, scenarios)
+    out = tmp_path / "out.jsonl"
+    args = ["--base-url", "http://unused.test/v1", "--model", "fake",
+            "--workers", "1", "--out", str(out), "--deadline", "10"]
+    if module is P:
+        def pack(*args, **kwargs):
+            work(args[2])
+            return fixture_packs()[0], None
+
+        monkeypatch.setattr(P, "one_pack", pack)
+        args += ["--domains-limit", "1", "--per-domain", "4"]
+    elif module is F:
+        monkeypatch.setattr(F, "process", lambda item, *args: work(item))
+        args += ["--scenarios", str(source), "--fraction", "1"]
+    else:
+        def rollout(item, profile):
+            work(item)
+            return _fake_rollout(item["template"], 0, _trajectory("finish")) | {"id": item["id"]}
+
+        monkeypatch.setattr(R, "run_one", rollout)
+        monkeypatch.setattr(R, "install_fixture_union", lambda _: None)
+        args += ["--scenarios", str(source)]
+    assert module.main(args) == 0
+    assert len(calls) == len(read_jsonl(out)) == 1
+    now[0] = 0
+    assert module.main(args) == 0
+    assert len(calls) == len(read_jsonl(out)) == 2
+    keys = [(item["domain"], item["index"]) if module is P else item["id"]
+            for item in read_jsonl(out)]
+    assert len(set(keys)) == 2
+
+
+def test_phrasing_fraction_is_seeded_and_unselected_are_unchanged(tmp_path, monkeypatch):
+    scenarios = [T.t_notes_append(fixture_packs()[0], random.Random(i)) for i in range(20)]
+    selected = F.selected_ids(scenarios, 0.4, 5)
+    assert len(selected) == 8
+    assert F.selected_ids(list(reversed(scenarios)), 0.4, 5) == selected
+    assert F.selected_ids(scenarios, 0.4, 6) != selected
+    calls = []
+
+    def process(item, *args):
+        calls.append(item["id"])
+        return item | {"phrased": "terse"}
+
+    monkeypatch.setattr(F, "process", process)
+    source, out = tmp_path / "source.jsonl", tmp_path / "out.jsonl"
+    write_jsonl(source, scenarios)
+    args = ["--base-url", "http://unused.test/v1", "--model", "fake",
+            "--scenarios", str(source), "--out", str(out), "--fraction", "0.4", "--seed", "5"]
+    assert F.main(args) == 0
+    assert set(calls) == selected
+    originals = {item["id"]: item for item in scenarios}
+    for item in read_jsonl(out):
+        if item["id"] not in selected:
+            assert item == originals[item["id"]]
+    assert F.main(args) == 0
+    assert len(calls) == 8
+    assert len(read_jsonl(out)) == 20
+
+
+def test_copy_inputs_restores_a_coherent_bundle_and_preserves_work(tmp_path):
+    datagen = datagen_module()
+    root, work = tmp_path / "input", tmp_path / "working"
+    early, later = root / "early", root / "nested" / "later"
+    early.mkdir(parents=True)
+    later.mkdir(parents=True)
+    work.mkdir()
+    write_jsonl(early / "rollouts.jsonl", [{"id": "early"}])
+    write_jsonl(early / "packs.jsonl", [{"domain": "early"}])
+    write_jsonl(later / "rollouts.jsonl", [{"id": "later-1"}, {"id": "later-2"}])
+    write_jsonl(later / "scenarios.jsonl", [{"id": "saved-scenario"}])
+    write_jsonl(later / "packs.jsonl", [{"domain": "later"}])
+    write_jsonl(later / "custom.jsonl", [{"checkpoint": True}])
+    write_jsonl(work / "packs.jsonl", [{"domain": "working"}])
+    copied = datagen.copy_inputs(root, work)
+    assert set(copied) == {"rollouts.jsonl", "scenarios.jsonl", "custom.jsonl"}
+    assert read_jsonl(work / "rollouts.jsonl") == read_jsonl(later / "rollouts.jsonl")
+    assert read_jsonl(work / "scenarios.jsonl") == [{"id": "saved-scenario"}]
+    assert read_jsonl(work / "packs.jsonl") == [{"domain": "working"}]
+    assert datagen.copy_inputs(root, work) == []
+    assert datagen.copy_inputs(tmp_path / "missing", work) == []
+
+
+def test_stage_logs_new_rollout_metrics(tmp_path, monkeypatch, capsys):
+    datagen = datagen_module()
+    path = tmp_path / "rollouts.jsonl"
+    old = _fake_rollout("t-old", 0, _trajectory("finish"))
+    write_jsonl(path, [old])
+    first = _fake_rollout("t-first", 1, _trajectory("finish")) | {
+        "category": "notes", "steps": 2, "tokens": {"in": 100, "out": 10}}
+    second = _fake_rollout("t-second", 2, _trajectory("finish")) | {
+        "category": "ask", "steps": 6, "passed": False, "tokens": {"in": 200, "out": 30}}
+
+    def run(*args, **kwargs):
+        write_jsonl(path, [old, first, second])
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(datagen.subprocess, "run", run)
+    clock = iter([1, 3])
+    monkeypatch.setattr(datagen, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+    metrics = datagen.stage("rollouts", ["unused.py"], inputs=[path], outputs=[path])
+    assert metrics["wall_seconds"] == 2
+    assert (metrics["items_in"], metrics["items_out"], metrics["items_new"]) == (1, 3, 2)
+    assert metrics["mean_steps"] == 4
+    assert metrics["completion_tokens"] == 40
+    assert metrics["tokens_per_second"] == 20
+    assert metrics["categories"]["notes"]["pass_rate"] == 1
+    assert metrics["categories"]["ask"]["pass_rate"] == 0
+    logged = next(
+        line for line in capsys.readouterr().out.splitlines() if line.startswith("STAGE ")
+    )
+    assert json.loads(logged.removeprefix("STAGE ")) == metrics
+
+
+@pytest.mark.parametrize("fail_early", [False, True])
+def test_kernel_always_builds_and_prints_summary(tmp_path, monkeypatch, capsys, fail_early):
+    datagen = datagen_module()
+    monkeypatch.setattr(datagen, "WORK", str(tmp_path))
+    monkeypatch.setattr(datagen, "TRAIN", str(ROOT / "train"))
+    monkeypatch.setattr(datagen, "DEADLINE_HOURS", 0)
+    monkeypatch.setattr(datagen, "DOMAINS_LIMIT", 2)
+    monkeypatch.setattr(datagen, "KERNEL_STARTED_AT", 0)
+    monkeypatch.setattr(datagen, "copy_inputs", lambda **kwargs: [])
+    monkeypatch.setattr(datagen, "find_inputs", lambda: None)
+    monkeypatch.setattr(datagen, "start_server", lambda: pytest.fail("late server start"))
+    called = []
+
+    def stage(name, args, **kwargs):
+        called.append((name, args, kwargs))
+        for path in kwargs.get("outputs", []):
+            Path(path).touch()
+        return {"stage": name, "returncode": int(fail_early and name == "packs")}
+
+    monkeypatch.setattr(datagen, "stage", stage)
+    if fail_early:
+        with pytest.raises(RuntimeError, match="packs failed"):
+            datagen.main()
+    else:
+        datagen.main()
+    assert called[-1][0] == "build"
+    assert "--deadline" not in called[-1][1]
+    assert len((tmp_path / "domains.txt").read_text().splitlines()) == 2
+    for name, args, _ in called:
+        if name in {"packs", "phrasing", "rollouts"}:
+            assert args[args.index("--deadline") + 1] == "0"
+    summary_line = capsys.readouterr().out.splitlines()[-1]
+    assert summary_line.startswith("SUMMARY ")
+    summary = json.loads(summary_line.removeprefix("SUMMARY "))
+    assert summary["stages"][-1]["stage"] == "build"
+    assert summary["config"]["PHRASING_FRACTION"] == 0.4
+
+
+def test_expired_phrasing_keeps_unselected_templates(tmp_path, monkeypatch):
+    scenarios = [T.t_notes_append(fixture_packs()[0], random.Random(i)) for i in range(10)]
+    source, out = tmp_path / "source.jsonl", tmp_path / "out.jsonl"
+    write_jsonl(source, scenarios)
+    monkeypatch.setattr(F, "process", lambda *args: pytest.fail("late rewrite"))
+    assert F.main(["--base-url", "http://unused.test/v1", "--model", "fake",
+                   "--scenarios", str(source), "--out", str(out), "--deadline", "0",
+                   "--fraction", "0.4", "--seed", "1"]) == 0
+    selected = F.selected_ids(scenarios, 0.4, 1)
+    assert read_jsonl(out) == [item for item in scenarios if item["id"] not in selected]
+
+
+def test_kernel_resume_reuses_saved_scenario_ids(tmp_path, monkeypatch):
+    datagen = datagen_module()
+    scenarios = tmp_path / "scenarios.jsonl"
+    write_jsonl(scenarios, [{"id": "saved-id"}])
+    monkeypatch.setattr(datagen, "WORK", str(tmp_path))
+    monkeypatch.setattr(datagen, "TRAIN", str(ROOT / "train"))
+    monkeypatch.setattr(datagen, "KERNEL_STARTED_AT", 1)
+    monkeypatch.setattr(datagen, "time", SimpleNamespace(time=lambda: 1))
+    monkeypatch.setattr(datagen, "copy_inputs", lambda **kwargs: [])
+    monkeypatch.setattr(datagen, "find_inputs", lambda: None)
+    monkeypatch.setattr(datagen, "start_server", lambda: SimpleNamespace(
+        terminate=lambda: None, wait=lambda **kwargs: None))
+    calls = []
+
+    def stage(name, args, **kwargs):
+        calls.append((name, args, kwargs))
+        if name == "packs":
+            write_jsonl(tmp_path / "packs.jsonl", [{"domain": "new pack"}])
+        return {"stage": name, "returncode": 0}
+
+    monkeypatch.setattr(datagen, "stage", stage)
+    datagen.main()
+    scenario_stage = next(kwargs for name, _, kwargs in calls if name == "scenarios")
+    assert scenario_stage["skip"] is True
+    assert read_jsonl(scenarios) == [{"id": "saved-id"}]
+    phrasing_args = next(args for name, args, _ in calls if name == "phrasing")
+    assert phrasing_args[phrasing_args.index("--fraction") + 1] == "0.4"
+
+
+def test_pilot_environment_configuration(monkeypatch):
+    monkeypatch.setenv("N_SCENARIOS", "300")
+    monkeypatch.setenv("DOMAINS_LIMIT", "40")
+    monkeypatch.setenv("PACKS_PER_DOMAIN", "2")
+    monkeypatch.setenv("PHRASING_FRACTION", "0.4")
+    monkeypatch.setenv("DEADLINE_HOURS", "10.5")
+    datagen = datagen_module()
+    assert (datagen.N_SCENARIOS, datagen.DOMAINS_LIMIT, datagen.PACKS_PER_DOMAIN) == (300, 40, 2)
+    assert datagen.PHRASING_FRACTION == 0.4
+    assert datagen.DEADLINE_HOURS == 10.5

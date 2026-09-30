@@ -10,12 +10,13 @@ that the original trigger contained. Resumable by scenario id.
 
 import argparse
 import json
+import random
 import re
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from packs import chat
+from pipeline import completed
 
 STYLES = {
     "terse": "Rewrite the message in a terse, rushed style: short, clipped, "
@@ -77,6 +78,12 @@ def process(scenario, base_url, model, temperature):
     return scenario
 
 
+def selected_ids(scenarios, fraction, seed):
+    """Sample from sorted IDs so selection stays stable across resume and input order."""
+    ids = sorted({scenario["id"] for scenario in scenarios})
+    return set(random.Random(seed).sample(ids, round(len(ids) * fraction)))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Rephrase scenario triggers.")
     parser.add_argument("--scenarios", required=True)
@@ -85,7 +92,12 @@ def main(argv=None):
     parser.add_argument("--out", required=True)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--temperature", type=float, default=0.7)
+    parser.add_argument("--fraction", type=float, default=0.4)
+    parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--deadline", type=float, default=None, help="stop new items at Unix time")
     args = parser.parse_args(argv)
+    if not 0 <= args.fraction <= 1:
+        parser.error("--fraction must be between 0 and 1")
 
     scenarios = [json.loads(line) for line in
                  Path(args.scenarios).read_text(encoding="utf-8").splitlines()
@@ -95,18 +107,28 @@ def main(argv=None):
         done = {json.loads(line)["id"] for line in
                 Path(args.out).read_text(encoding="utf-8").splitlines() if line.strip()}
     todo = [s for s in scenarios if s["id"] not in done]
+    selected = selected_ids(scenarios, args.fraction, args.seed)
     print(f"{len(todo)} triggers to phrase ({len(done)} already done)", flush=True)
 
-    with open(args.out, "a", encoding="utf-8") as file, \
-            ThreadPoolExecutor(max_workers=args.workers) as pool:
-            for i, scenario in enumerate(
-                    pool.map(lambda s: process(s, args.base_url, args.model,
-                                               args.temperature), todo), 1):
+    written = 0
+    with open(args.out, "a", encoding="utf-8") as file:
+        # Unselected scenarios retain their template phrasings without any model call.
+        for scenario in todo:
+            if scenario["id"] not in selected:
                 file.write(json.dumps(scenario, ensure_ascii=False) + "\n")
                 file.flush()
-                if i % 100 == 0:
-                    print(f"{i}/{len(todo)}", flush=True)
-    print(f"wrote {len(todo)} scenarios to {args.out}")
+                written += 1
+        selected_todo = [s for s in todo if s["id"] in selected]
+        def work(scenario):
+            return process(scenario, args.base_url, args.model, args.temperature)
+
+        for _, scenario in completed(work, selected_todo, args.workers, args.deadline):
+            file.write(json.dumps(scenario, ensure_ascii=False) + "\n")
+            file.flush()
+            written += 1
+            if written % 100 == 0:
+                print(f"{written}/{len(todo)}", flush=True)
+    print(f"wrote {written} scenarios to {args.out}")
     return 0
 
 

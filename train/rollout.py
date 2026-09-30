@@ -16,8 +16,9 @@ modified.
 import argparse
 import json
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+from pipeline import completed
 
 from tholos import fetch
 from tholos.bench import runner as bench
@@ -88,6 +89,7 @@ def main(argv=None):
     parser.add_argument("--out", required=True)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=512)
+    parser.add_argument("--deadline", type=float, default=None, help="stop new items at Unix time")
     args = parser.parse_args(argv)
 
     scenarios = [json.loads(line) for line in
@@ -106,17 +108,19 @@ def main(argv=None):
         "temperature": args.temperature,
         "max_tokens": args.max_tokens,
     }
-    passed = 0
-    with open(args.out, "a", encoding="utf-8") as file, \
-            ThreadPoolExecutor(max_workers=args.workers) as pool:
-            for i, result in enumerate(pool.map(
-                    lambda s: run_one(s, profile), todo), 1):
-                file.write(json.dumps(result, ensure_ascii=False) + "\n")
-                file.flush()
-                passed += result["passed"]
-                if i % 25 == 0:
-                    print(f"{i}/{len(todo)} done, {passed} passing", flush=True)
-    print(f"wrote {len(todo)} rollouts to {args.out}; {passed} passing")
+    passed, written = 0, 0
+    with open(args.out, "a", encoding="utf-8") as file:
+        def work(scenario):
+            return run_one(scenario, profile)
+
+        for _, result in completed(work, todo, args.workers, args.deadline):
+            file.write(json.dumps(result, ensure_ascii=False) + "\n")
+            file.flush()
+            written += 1
+            passed += result["passed"]
+            if written % 25 == 0:
+                print(f"{written}/{len(todo)} done, {passed} passing", flush=True)
+    print(f"wrote {written} rollouts to {args.out}; {passed} passing")
     return 0
 
 

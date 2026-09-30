@@ -1,6 +1,8 @@
 import json
+import logging
 import math
 from dataclasses import dataclass, field
+from threading import Lock
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -8,6 +10,10 @@ import httpx
 
 from tholos import prompt
 from tholos.workspace import dumps
+
+log = logging.getLogger(__name__)
+_OLLAMA_WARNED: set[tuple[int | None, str, str]] = set()
+_OLLAMA_LOCK = Lock()
 
 
 @dataclass
@@ -124,7 +130,28 @@ def step(
         "max_tokens": profile["max_tokens"],
         "chat_template_kwargs": {"enable_thinking": False},
     }
+    base_url = profile["base_url"].rstrip("/")
+    parsed = urlsplit(base_url)
+    ollama = (
+        parsed.port == 11434
+        or "ollama" in (parsed.hostname or "").lower()
+        or "ollama" in parsed.path.lower()
+    )
+    if ollama:
+        payload["think"] = False
     mode = profile.get("json_mode", "schema")
+    if ollama and mode == "schema":
+        mode = "object"
+        key = (profile.get("id"), base_url, profile["model"])
+        with _OLLAMA_LOCK:
+            first = key not in _OLLAMA_WARNED
+            _OLLAMA_WARNED.add(key)
+        if first:
+            log.warning(
+                "Ollama profile %s uses json_object to preserve thought/tool/args order; "
+                "local schema validation remains enabled.",
+                profile.get("id", "unregistered"),
+            )
     if mode == "schema":
         payload["response_format"] = {
             "type": "json_schema",
@@ -134,10 +161,6 @@ def step(
         payload["response_format"] = {"type": "json_object"}
     elif mode != "none":
         raise ValueError("json_mode must be schema, object, or none")
-    base_url = profile["base_url"].rstrip("/")
-    parsed = urlsplit(base_url)
-    if parsed.port == 11434 or "ollama" in parsed.path.lower():
-        payload["think"] = False
     headers = {"Authorization": f"Bearer {profile['api_key']}"} if profile.get("api_key") else {}
     result = Step()
     with httpx.Client(transport=transport, timeout=120, trust_env=False) as client:

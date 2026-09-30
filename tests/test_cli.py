@@ -66,17 +66,20 @@ def test_cli_serve(argv, host, port, monkeypatch):
     assert calls == [(module.app, {"host": host, "port": port})]
 
 
-def test_cli_unavailable_web(monkeypatch, capsys):
+@pytest.mark.parametrize("module", ["tholos.web", "jinja2"])
+def test_cli_import_error_is_not_hidden(monkeypatch, capsys, module):
     original = importlib.import_module
 
     def missing(name):
         if name == "tholos.web":
-            raise ModuleNotFoundError("Missing", name=name)
+            raise ModuleNotFoundError("Missing", name=module)
         return original(name)
 
     monkeypatch.setattr(importlib, "import_module", missing)
-    cli.main([])
-    assert "not installed yet" in capsys.readouterr().out
+    with pytest.raises(ModuleNotFoundError) as error:
+        cli.main([])
+    assert error.value.name == module
+    assert capsys.readouterr().out == ""
 
 
 def test_cli_bench(monkeypatch):
