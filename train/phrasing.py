@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from packs import chat
-from pipeline import completed
+from pipeline import add_hosted_args, completed, hosted_config
 
 STYLES = {
     "terse": "Rewrite the message in a terse, rushed style: short, clipped, "
@@ -51,20 +51,30 @@ def facts(scenario, text):
     return wanted
 
 
-def rewrite(base_url, model, text, style, temperature):
-    messages = [
-        {"role": "system", "content": SYSTEM},
-        {"role": "user", "content": f"{STYLES[style]}\n\nMessage:\n{text}"},
-    ]
-    return chat(base_url, model, messages, None, temperature, timeout=120)
+def rewrite(base_url, model, text, style, temperature, api_key=None,
+            json_mode="none", throttle=None):
+    if json_mode == "object":
+        instruction = ("Reply with one JSON object: {\"rewrite\": \"...\"}. "
+                       "Keep every fact.")
+    else:
+        instruction = "Reply with the rewritten message text only, no quotes, no commentary."
+    user = f"{STYLES[style]}\n{instruction}\n\nMessage:\n{text}"
+    messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}]
+    reply = chat(base_url, model, messages, None, temperature, timeout=120,
+                 api_key=api_key, json_mode=json_mode, throttle=throttle)
+    if json_mode == "object":
+        reply = str(json.loads(reply)["rewrite"])
+    return reply
 
 
-def process(scenario, base_url, model, temperature):
+def process(scenario, base_url, model, temperature, api_key=None, json_mode="none",
+            throttle=None):
     field = trigger_fields(scenario)
     original = scenario["trigger"][field]
     style = list(STYLES)[sum(bytearray(scenario["id"], "utf-8")) % 3]
     try:
-        text = rewrite(base_url, model, original, style, temperature)
+        text = rewrite(base_url, model, original, style, temperature,
+                       api_key=api_key, json_mode=json_mode, throttle=throttle)
     except Exception:  # noqa: BLE001 - network hiccup: keep the original
         return scenario
     wanted = facts(scenario, original)
@@ -95,7 +105,9 @@ def main(argv=None):
     parser.add_argument("--fraction", type=float, default=0.4)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--deadline", type=float, default=None, help="stop new items at Unix time")
+    add_hosted_args(parser)
     args = parser.parse_args(argv)
+    api_key, throttle = hosted_config(parser, args)
     if not 0 <= args.fraction <= 1:
         parser.error("--fraction must be between 0 and 1")
 
@@ -115,14 +127,18 @@ def main(argv=None):
         # Unselected scenarios retain their template phrasings without any model call.
         for scenario in todo:
             if scenario["id"] not in selected:
+                scenario = dict(scenario, teacher=args.teacher)
                 file.write(json.dumps(scenario, ensure_ascii=False) + "\n")
                 file.flush()
                 written += 1
         selected_todo = [s for s in todo if s["id"] in selected]
+
         def work(scenario):
-            return process(scenario, args.base_url, args.model, args.temperature)
+            return process(scenario, args.base_url, args.model, args.temperature,
+                           api_key=api_key, json_mode=args.json_mode, throttle=throttle)
 
         for _, scenario in completed(work, selected_todo, args.workers, args.deadline):
+            scenario = dict(scenario, teacher=args.teacher)
             file.write(json.dumps(scenario, ensure_ascii=False) + "\n")
             file.flush()
             written += 1

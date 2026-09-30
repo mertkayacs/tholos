@@ -14,8 +14,7 @@ import threading
 import time
 from pathlib import Path
 
-import httpx
-from pipeline import completed
+from pipeline import add_hosted_args, completed, hosted_config, post_json
 from templates import validate_pack
 
 PACK_SCHEMA = {
@@ -91,7 +90,8 @@ Write a workspace pack for this domain:
 Keep every string free of em dashes. Use plain ASCII quotes."""
 
 
-def chat(base_url, model, messages, schema, temperature, timeout=180):
+def chat(base_url, model, messages, schema, temperature, timeout=180, api_key=None,
+         json_mode="schema", throttle=None):
     payload = {
         "model": model,
         "messages": messages,
@@ -99,16 +99,33 @@ def chat(base_url, model, messages, schema, temperature, timeout=180):
         "max_tokens": 2048,
         "chat_template_kwargs": {"enable_thinking": False},
     }
-    if schema is not None:
+    if json_mode == "schema" and schema is not None:
         payload["response_format"] = {"type": "json_schema", "json_schema": {
             "name": "pack", "strict": True, "schema": schema}}
-    response = httpx.post(base_url.rstrip("/") + "/chat/completions", json=payload,
-                          timeout=timeout, trust_env=False)
-    response.raise_for_status()
-    return response.json()["choices"][0]["message"]["content"]
+    elif json_mode == "object":
+        payload["response_format"] = {"type": "json_object"}
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    url = base_url.rstrip("/") + "/chat/completions"
+
+    def send():
+        if throttle is not None:
+            throttle.wait()
+        return post_json(url, payload, headers, timeout)
+
+    return send()["choices"][0]["message"]["content"]
 
 
-def one_pack(base_url, model, domain, index, seed, temperature, attempts=4):
+def parse_pack_text(text, json_mode):
+    """Object and schema modes return JSON directly; none may fence it."""
+    if json_mode == "none":
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.strip("`").removeprefix("json").strip()
+    return json.loads(text)
+
+
+def one_pack(base_url, model, domain, index, seed, temperature, attempts=4, api_key=None,
+             json_mode="schema", throttle=None):
     """Ask the teacher for one pack; retry until it validates."""
     last = "no attempt"
     for _ in range(attempts):
@@ -118,7 +135,9 @@ def one_pack(base_url, model, domain, index, seed, temperature, attempts=4):
                 {"role": "user", "content": USER.format(domain=domain, index=index,
                                                         seed=seed)},
             ]
-            pack = json.loads(chat(base_url, model, messages, PACK_SCHEMA, temperature))
+            pack = parse_pack_text(
+                chat(base_url, model, messages, PACK_SCHEMA, temperature,
+                     api_key=api_key, json_mode=json_mode, throttle=throttle), json_mode)
             pack["domain"] = domain
             error = validate_pack(pack)
             if error is None:
@@ -151,7 +170,9 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, default=0, help="stop after N new packs")
     parser.add_argument("--domains-limit", type=int, default=None, help="use the first N domains")
     parser.add_argument("--deadline", type=float, default=None, help="stop new items at Unix time")
+    add_hosted_args(parser)
     args = parser.parse_args(argv)
+    api_key, throttle = hosted_config(parser, args)
 
     domains = [d.strip() for d in Path(args.domains).read_text(encoding="utf-8")
                .splitlines() if d.strip()]
@@ -173,11 +194,12 @@ def main(argv=None):
         domain, index = job
         seed = f"{domain}:{index}"
         pack, error = one_pack(args.base_url, args.model, domain, index, seed,
-                               args.temperature)
+                               args.temperature, api_key=api_key,
+                               json_mode=args.json_mode, throttle=throttle)
         if pack is None:
             return False
-        line = json.dumps({"domain": domain, "index": index, "pack": pack},
-                          ensure_ascii=False)
+        line = json.dumps({"domain": domain, "index": index, "pack": pack,
+                           "teacher": args.teacher}, ensure_ascii=False)
         with lock:
             with open(args.out, "a", encoding="utf-8") as file:
                 file.write(line + "\n")

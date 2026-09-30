@@ -127,6 +127,7 @@ def write_split(results, path):
                     "category": result["category"],
                     "template": result["template"],
                     "domain": result.get("domain", ""),
+                    "teacher": result.get("teacher", ""),
                     "steps": result.get("steps", 0),
                     "tokens": result.get("tokens", {"in": 0, "out": 0}),
                 },
@@ -170,14 +171,29 @@ def main(argv=None):
     write_split(train, out / "sft_train.jsonl")
     write_split(val, out / "sft_val.jsonl")
 
-    attempted = Counter(r["category"] for r in unique)
     passed = Counter(r["category"] for r in unique if r["passed"])
-    kept_counts = Counter(r["category"] for r in kept)
-    print(f"{'Category':<20} {'Rollouts':>9} {'Passed':>8} {'Kept':>6} {'Rate':>7}")
-    for category in sorted(attempted):
-        rate = passed[category] / attempted[category] if attempted[category] else 0
-        print(f"{category:<20} {attempted[category]:>9} {passed[category]:>8} "
-              f"{kept_counts[category]:>6} {rate:>6.0%}")
+
+    def table(rows):
+        print(f"{'':<20} {'Rollouts':>9} {'Passed':>8} {'Kept':>6} {'Rate':>7}")
+        for name in sorted(rows):
+            group = rows[name]
+            rate = group["passed"] / group["attempted"] if group["attempted"] else 0
+            print(f"{name:<20} {group['attempted']:>9} {group['passed']:>8} "
+                  f"{group['kept']:>6} {rate:>6.0%}")
+
+    def grouped(key):
+        rows = defaultdict(lambda: {"attempted": 0, "passed": 0, "kept": 0})
+        for result in unique:
+            rows[result.get(key, "")]["attempted"] += 1
+            rows[result.get(key, "")]["passed"] += bool(result["passed"])
+        for result in kept:
+            rows[result.get(key, "")]["kept"] += 1
+        return rows
+
+    print("Per category:")
+    table(grouped("category"))
+    print("Per teacher:")
+    table(grouped("teacher"))
     print(f"total: {len(unique)} rollouts, {sum(passed.values())} passing, "
           f"{len(kept)} kept ({dropped_dupes} near-duplicates dropped)")
     for reason, count in reasons.most_common():

@@ -392,10 +392,10 @@ def test_deadline_flushes_in_flight_and_cli_resumes(module, tmp_path, monkeypatc
         monkeypatch.setattr(P, "one_pack", pack)
         args += ["--domains-limit", "1", "--per-domain", "4"]
     elif module is F:
-        monkeypatch.setattr(F, "process", lambda item, *args: work(item))
+        monkeypatch.setattr(F, "process", lambda item, *args, **kwargs: work(item))
         args += ["--scenarios", str(source), "--fraction", "1"]
     else:
-        def rollout(item, profile):
+        def rollout(item, profile, teacher=None, throttle=None):
             work(item)
             return _fake_rollout(item["template"], 0, _trajectory("finish")) | {"id": item["id"]}
 
@@ -420,7 +420,7 @@ def test_phrasing_fraction_is_seeded_and_unselected_are_unchanged(tmp_path, monk
     assert F.selected_ids(scenarios, 0.4, 6) != selected
     calls = []
 
-    def process(item, *args):
+    def process(item, *args, **kwargs):
         calls.append(item["id"])
         return item | {"phrased": "terse"}
 
@@ -433,6 +433,7 @@ def test_phrasing_fraction_is_seeded_and_unselected_are_unchanged(tmp_path, monk
     assert set(calls) == selected
     originals = {item["id"]: item for item in scenarios}
     for item in read_jsonl(out):
+        assert item.pop("teacher") == "local"
         if item["id"] not in selected:
             assert item == originals[item["id"]]
     assert F.main(args) == 0
@@ -541,7 +542,9 @@ def test_expired_phrasing_keeps_unselected_templates(tmp_path, monkeypatch):
                    "--scenarios", str(source), "--out", str(out), "--deadline", "0",
                    "--fraction", "0.4", "--seed", "1"]) == 0
     selected = F.selected_ids(scenarios, 0.4, 1)
-    assert read_jsonl(out) == [item for item in scenarios if item["id"] not in selected]
+    kept = read_jsonl(out)
+    assert all(item.pop("teacher") == "local" for item in kept)
+    assert kept == [item for item in scenarios if item["id"] not in selected]
 
 
 def test_kernel_resume_reuses_saved_scenario_ids(tmp_path, monkeypatch):
@@ -583,3 +586,188 @@ def test_pilot_environment_configuration(monkeypatch):
     assert (datagen.N_SCENARIOS, datagen.DOMAINS_LIMIT, datagen.PACKS_PER_DOMAIN) == (300, 40, 2)
     assert datagen.PHRASING_FRACTION == 0.4
     assert datagen.DEADLINE_HOURS == 10.5
+
+
+# ---------------------------------------------------------------- hosted lane
+
+def ok_response(text):
+    return {"choices": [{"message": {"content": text}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+
+def recording_transport(responses, sink):
+    def handler(request):
+        sink.append(request)
+        step = responses[len(sink) - 1] if len(sink) <= len(responses) else responses[-1]
+        if isinstance(step, Exception):
+            raise step
+        status, body, headers = step
+        return httpx.Response(status, json=body, headers=headers, request=request)
+
+    return httpx.MockTransport(handler)
+
+
+def patch_sleep(monkeypatch, sleeps):
+    monkeypatch.setattr(pipeline, "uniform", lambda a, b: 0.0)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda d: sleeps.append(d))
+
+
+def test_api_key_from_env_sent_as_bearer_and_never_printed(monkeypatch, capsys):
+    monkeypatch.setenv("THOLOS_TEST_KEY", "secret-token")
+    sink = []
+    transport = recording_transport([(200, ok_response("hi"), {})], sink)
+
+    def fake_post(url, payload, headers, timeout):
+        with pipeline.httpx.Client(transport=transport, trust_env=False) as client:
+            return client.post(url, json=payload, headers=headers).json()
+
+    monkeypatch.setattr(P, "post_json", fake_post)
+    key = pipeline.api_key_from_env("THOLOS_TEST_KEY")
+    out = P.chat("http://host.test/v1", "m", [{"role": "user", "content": "x"}],
+                 None, 0, api_key=key)
+    assert out == "hi"
+    assert len(sink) == 1
+    request = sink[0]
+    assert request.headers["authorization"] == "Bearer secret-token"
+    assert "secret-token" not in request.content.decode()
+    captured = capsys.readouterr()
+    assert "secret-token" not in captured.out + captured.err
+
+
+def test_api_key_missing_env_fails_fast(monkeypatch):
+    monkeypatch.delenv("THOLOS_NOPE", raising=False)
+    with pytest.raises(ValueError, match="THOLOS_NOPE"):
+        pipeline.api_key_from_env("THOLOS_NOPE")
+
+
+def test_json_mode_request_bodies(monkeypatch):
+    for mode, expect in [("schema", {"type": "json_schema"}),
+                         ("object", {"type": "json_object"}),
+                         ("none", None)]:
+        sink = []
+        transport = recording_transport([(200, ok_response("{}"), {})], sink)
+
+        def fake_post(url, payload, headers, timeout, transport=transport):
+            with pipeline.httpx.Client(transport=transport, trust_env=False) as client:
+                return client.post(url, json=payload, headers=headers).json()
+
+        monkeypatch.setattr(P, "post_json", fake_post)
+        P.chat("http://host.test/v1", "m", [{"role": "user", "content": "x"}],
+               P.PACK_SCHEMA if mode == "schema" else None, 0, json_mode=mode)
+        payload = json.loads(sink[0].content)
+        if expect is None:
+            assert "response_format" not in payload
+        else:
+            assert payload["response_format"]["type"] == expect["type"]
+
+
+def test_retry_on_429_then_success(monkeypatch):
+    sink, sleeps = [], []
+    patch_sleep(monkeypatch, sleeps)
+    transport = recording_transport(
+        [(429, {"error": "slow down"}, {}), (200, ok_response("ok"), {})], sink)
+
+    def send():
+        with pipeline.httpx.Client(transport=transport, trust_env=False) as client:
+            return client.post("http://host.test/v1/chat/completions", json={})
+
+    response = pipeline.call_with_retries(send)
+    assert response.status_code == 200
+    assert len(sink) == 2
+    assert sleeps == [1.0]
+
+
+def test_retry_after_is_honored(monkeypatch):
+    sink, sleeps = [], []
+    patch_sleep(monkeypatch, sleeps)
+    transport = recording_transport(
+        [(429, {"error": "wait"}, {"retry-after": "30"}), (200, ok_response("ok"), {})], sink)
+
+    def send():
+        with pipeline.httpx.Client(transport=transport, trust_env=False) as client:
+            return client.post("http://host.test/v1/chat/completions", json={})
+
+    pipeline.call_with_retries(send)
+    assert sleeps == [30.0]
+
+
+def test_retry_exhaustion_raises_and_never_prints_key(monkeypatch, capsys):
+    sink, sleeps = [], []
+    patch_sleep(monkeypatch, sleeps)
+    transport = recording_transport([(503, {"error": "down"}, {})] * 8, sink)
+
+    def send():
+        with pipeline.httpx.Client(transport=transport, trust_env=False) as client:
+            return client.post("http://host.test/v1/chat/completions", json={},
+                               headers={"Authorization": "Bearer secret-token"})
+
+    with pytest.raises(pipeline.httpx.HTTPStatusError):
+        pipeline.call_with_retries(send)
+    assert len(sink) == 6
+    assert sleeps == [1.0, 2.0, 4.0, 8.0, 16.0]
+    captured = capsys.readouterr()
+    assert "secret-token" not in captured.out + captured.err
+
+
+def test_throttle_spacing(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(pipeline.time, "time", lambda: clock[0])
+    sleeps = []
+    monkeypatch.setattr(pipeline.time, "sleep",
+                        lambda d: (sleeps.append(d), clock.__setitem__(0, clock[0] + d)))
+    throttle = pipeline.Throttle(120)
+    for _ in range(3):
+        throttle.wait()
+    assert sleeps == [0.5, 0.5]
+
+
+def test_teacher_label_propagates_to_rollouts_and_build_meta(tmp_path, monkeypatch):
+    scenario = T.t_notes_append(fixture_packs()[0], random.Random(0))
+    result = {"passed": True, "failed_assertions": [], "steps": 2,
+              "invalid_json_count": 0, "tokens": {"in": 3, "out": 2}, "seconds": 0.1,
+              "messages": _trajectory("note_write", "finish")}
+    monkeypatch.setattr(R.bench, "run_scenario", lambda sc, profile: result)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda d: None)
+    record = R.run_one(scenario, dict(PROFILE), "lane-a")
+    assert record["teacher"] == "lane-a"
+    out = tmp_path / "sft.jsonl"
+    B.write_split([record], out)
+    sample = json.loads(out.read_text().splitlines()[0])
+    assert sample["meta"]["teacher"] == "lane-a"
+    assert sample["messages"][0]["role"] == "assistant"
+
+
+def test_rollout_retries_failed_zero_step_run(monkeypatch):
+    scenario = T.t_notes_append(fixture_packs()[0], random.Random(0))
+    failed = {"passed": False, "failed_assertions": [{"type": "finished"}], "steps": 0,
+              "invalid_json_count": 0, "tokens": {"in": 0, "out": 0}, "seconds": 0.1,
+              "messages": []}
+    good = {"passed": True, "failed_assertions": [], "steps": 2,
+            "invalid_json_count": 0, "tokens": {"in": 3, "out": 2}, "seconds": 0.2,
+            "messages": _trajectory("note_write", "finish")}
+    calls = iter([failed, good])
+    sleeps = []
+    monkeypatch.setattr(R.bench, "run_scenario", lambda sc, profile: next(calls))
+    monkeypatch.setattr(pipeline.time, "sleep", lambda d: sleeps.append(d))
+    monkeypatch.setattr(pipeline, "uniform", lambda a, b: 0.0)
+    record = R.run_one(scenario, dict(PROFILE), "lane-b")
+    assert record["passed"] and record["teacher"] == "lane-b"
+    assert sleeps == [1.0]
+
+
+def test_build_prints_per_teacher_stats(tmp_path, capsys):
+    results = []
+    for i in range(4):
+        record = _fake_rollout("t-a", i, _trajectory("finish"))
+        record["teacher"] = "lane-a" if i < 3 else "lane-b"
+        record["passed"] = i != 3
+        results.append(record)
+    rollouts = tmp_path / "rollouts.jsonl"
+    write_jsonl(rollouts, results)
+    out_dir = tmp_path / "out"
+    assert B.main(["--rollouts", str(rollouts), "--out-dir", str(out_dir)]) == 0
+    text = capsys.readouterr().out
+    assert "Per teacher:" in text and "lane-a" in text and "lane-b" in text
+    samples = read_jsonl(out_dir / "sft_train.jsonl") + read_jsonl(out_dir / "sft_val.jsonl")
+    teachers = {sample["meta"]["teacher"] for sample in samples}
+    assert teachers == {"lane-a"}

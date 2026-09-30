@@ -16,9 +16,11 @@ modified.
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
-from pipeline import completed
+import httpx
+from pipeline import add_hosted_args, backoff_delay, completed, hosted_config, retry_after
 
 from tholos import fetch
 from tholos.bench import runner as bench
@@ -39,36 +41,62 @@ def install_fixture_union(scenarios):
     return union
 
 
-def run_one(scenario, profile):
-    try:
-        result = bench.run_scenario(scenario, profile)
-        return {
-            "id": scenario["id"],
-            "category": scenario["category"],
-            "template": scenario["template"],
-            "domain": scenario.get("domain", ""),
-            "passed": result["passed"],
-            "failed_assertions": result["failed_assertions"],
-            "steps": result["steps"],
-            "invalid_json_count": result["invalid_json_count"],
-            "tokens": result["tokens"],
-            "seconds": result["seconds"],
-            "messages": result["messages"],
-        }
-    except Exception as exc:  # noqa: BLE001 - one bad scenario must not stop the run
-        return {
-            "id": scenario["id"],
-            "category": scenario["category"],
-            "template": scenario["template"],
-            "domain": scenario.get("domain", ""),
-            "passed": False,
-            "failed_assertions": [{"type": "crash", "error": repr(exc)}],
-            "steps": 0,
-            "invalid_json_count": 0,
-            "tokens": {"in": 0, "out": 0},
-            "seconds": 0.0,
-            "messages": [],
-        }
+def _record(scenario, result, teacher):
+    return {
+        "id": scenario["id"],
+        "category": scenario["category"],
+        "template": scenario["template"],
+        "domain": scenario.get("domain", ""),
+        "teacher": teacher,
+        "passed": result["passed"],
+        "failed_assertions": result["failed_assertions"],
+        "steps": result["steps"],
+        "invalid_json_count": result["invalid_json_count"],
+        "tokens": result["tokens"],
+        "seconds": result["seconds"],
+        "messages": result["messages"],
+    }
+
+
+def run_one(scenario, profile, teacher, throttle=None, attempts=6):
+    """Run one scenario, retrying failures that happened before the first step.
+
+    The runtime records an HTTP failure as a failed run with zero steps, so a
+    failed run with no steps is the transient-error signal available here.
+    """
+    result = None
+    for attempt in range(attempts):
+        try:
+            if throttle is not None:
+                throttle.wait()
+            result = bench.run_scenario(scenario, profile)
+            if result["passed"] or result["steps"] > 0:
+                return _record(scenario, result, teacher)
+        except httpx.HTTPError as exc:
+            response = getattr(exc, "response", None)
+            if attempt < attempts - 1:
+                hint = retry_after(response) if response is not None else None
+                time.sleep(backoff_delay(attempt, hint))
+            result = None
+            continue
+        except Exception as exc:  # noqa: BLE001 - one bad scenario must not stop the run
+            return {
+                "id": scenario["id"],
+                "category": scenario["category"],
+                "template": scenario["template"],
+                "domain": scenario.get("domain", ""),
+                "teacher": teacher,
+                "passed": False,
+                "failed_assertions": [{"type": "crash", "error": repr(exc)}],
+                "steps": 0,
+                "invalid_json_count": 0,
+                "tokens": {"in": 0, "out": 0},
+                "seconds": 0.0,
+                "messages": [],
+            }
+        if attempt < attempts - 1:
+            time.sleep(backoff_delay(attempt))
+    return _record(scenario, result, teacher)
 
 
 def done_ids(path):
@@ -90,7 +118,9 @@ def main(argv=None):
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=512)
     parser.add_argument("--deadline", type=float, default=None, help="stop new items at Unix time")
+    add_hosted_args(parser)
     args = parser.parse_args(argv)
+    api_key, throttle = hosted_config(parser, args)
 
     scenarios = [json.loads(line) for line in
                  Path(args.scenarios).read_text(encoding="utf-8").splitlines()
@@ -103,15 +133,15 @@ def main(argv=None):
     profile = {
         "base_url": args.base_url,
         "model": args.model,
-        "api_key": None,
-        "json_mode": "schema",
+        "api_key": api_key,
+        "json_mode": args.json_mode,
         "temperature": args.temperature,
         "max_tokens": args.max_tokens,
     }
     passed, written = 0, 0
     with open(args.out, "a", encoding="utf-8") as file:
         def work(scenario):
-            return run_one(scenario, profile)
+            return run_one(scenario, profile, args.teacher, throttle)
 
         for _, result in completed(work, todo, args.workers, args.deadline):
             file.write(json.dumps(result, ensure_ascii=False) + "\n")

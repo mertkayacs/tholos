@@ -41,6 +41,7 @@ DOMAINS_LIMIT = None if _domains_limit.lower() in {"none", ""} else int(_domains
 PHRASING_FRACTION = float(os.environ.get("PHRASING_FRACTION", "0.4"))
 DEADLINE_HOURS = float(os.environ.get("DEADLINE_HOURS", "10.5"))
 WORKERS = int(os.environ.get("WORKERS", "8"))
+TEACHER = os.environ.get("TEACHER", "local")
 
 
 def count_items(path):
@@ -179,7 +180,8 @@ def main():
     scenarios = f"{WORK}/scenarios.jsonl"
     phrased = f"{WORK}/scenarios_phrased.jsonl"
     rollouts = f"{WORK}/rollouts.jsonl"
-    common = ["--base-url", BASE_URL, "--model", MODEL, "--deadline", str(deadline)]
+    common = ["--base-url", BASE_URL, "--model", MODEL, "--deadline", str(deadline),
+              "--teacher", TEACHER]
 
     def run_stage(*args, **kwargs):
         result = stage(*args, **kwargs)
@@ -240,7 +242,8 @@ def main():
                                   "PACKS_PER_DOMAIN": PACKS_PER_DOMAIN,
                                   "DOMAINS_LIMIT": DOMAINS_LIMIT,
                                   "PHRASING_FRACTION": PHRASING_FRACTION,
-                                  "DEADLINE_HOURS": DEADLINE_HOURS}}
+                                  "DEADLINE_HOURS": DEADLINE_HOURS,
+                                  "TEACHER": TEACHER}}
             print("SUMMARY " + json.dumps(summary, sort_keys=True), flush=True)
 
 
