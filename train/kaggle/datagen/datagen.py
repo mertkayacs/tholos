@@ -87,13 +87,16 @@ def copy_inputs(input_root="/kaggle/input", work=WORK):
 
 def rollout_metrics(path, seconds, skip=0):
     categories = {}
-    steps, tokens, total = 0, 0, 0
+    steps, tokens, total, infra_failed = 0, 0, 0, 0
     if Path(path).is_file():
         with open(path, encoding="utf-8") as file:
             for index, line in enumerate(line for line in file if line.strip()):
                 if index < skip:
                     continue
                 item = json.loads(line)
+                if item.get("infra_failed"):
+                    infra_failed += 1
+                    continue
                 count = categories.setdefault(item["category"], {"items": 0, "passed": 0})
                 count["items"] += 1
                 count["passed"] += bool(item["passed"])
@@ -103,6 +106,7 @@ def rollout_metrics(path, seconds, skip=0):
     for count in categories.values():
         count["pass_rate"] = count["passed"] / count["items"]
     return {"categories": categories, "mean_steps": steps / total if total else 0,
+            "infra_failed": infra_failed,
             "completion_tokens": tokens,
             "tokens_per_second": tokens / seconds if seconds > 0 else 0}
 
@@ -140,13 +144,14 @@ def start_server():
     t0 = time.time()
     gguf = hf_hub_download(GGUF_REPO, GGUF_FILE, local_dir="/tmp/models")
     print(f"gguf download {time.time() - t0:.0f}s", flush=True)
-    log = open("/tmp/server.log", "w")  # noqa: SIM115 - outlives the call
-    process = subprocess.Popen(
-        [server, "-m", gguf, "-ngl", "99", "-c", "65536", "--parallel", "8",
-         "--jinja", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
-         "--port", "8080"],
-        stdout=log, stderr=subprocess.STDOUT,
-    )
+    log_path = f"{WORK}/server.log"
+    with open(log_path, "w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            [server, "-m", gguf, "-ngl", "99", "-c", "65536", "--parallel", "8",
+             "--jinja", "-fa", "on", "--cache-type-k", "q8_0", "--cache-type-v", "q8_0",
+             "--port", "8080"],
+            stdout=log, stderr=subprocess.STDOUT,
+        )
     for _ in range(900):
         try:
             if json.load(urllib.request.urlopen(
@@ -155,7 +160,7 @@ def start_server():
                 return process
         except Exception:
             time.sleep(1)
-    sh("tail -60 /tmp/server.log")
+    sh(f"tail -60 {log_path}")
     sys.exit("server never became healthy")
 
 
@@ -207,6 +212,15 @@ def main():
         if rollout_only:
             rollout_source = kaggle_scenarios
             print(f"rollout-only input: {rollout_source}", flush=True)
+            has_phrased = any(json.loads(line).get("phrased") for line in
+                             Path(kaggle_scenarios).read_text(encoding="utf-8").splitlines()
+                             if line.strip())
+            if PHRASING_FRACTION > 0 and not has_phrased:
+                run_stage("phrasing", [f"{TRAIN}/phrasing.py", "--scenarios", kaggle_scenarios,
+                                       *common, "--fraction", str(PHRASING_FRACTION),
+                                       "--seed", "1", "--workers", str(WORKERS), "--out", phrased],
+                          inputs=[kaggle_scenarios], outputs=[phrased])
+                rollout_source = phrased
         else:
             domains = Path(TRAIN) / "domains.txt"
             limited_domains = Path(WORK) / "domains.txt"
@@ -234,7 +248,8 @@ def main():
             rollout_source = phrased
         run_stage("rollouts", [f"{TRAIN}/rollout.py", "--scenarios", rollout_source, *common,
                                "--workers", str(WORKERS), "--out", rollouts,
-                               "--temperature", "0.2"], inputs=[rollout_source], outputs=[rollouts])
+                               "--temperature", "0.2", "--timeout", "600"],
+                  inputs=[rollout_source], outputs=[rollouts])
     finally:
         try:
             # Build runs even when the deadline or an earlier stage ends generation.

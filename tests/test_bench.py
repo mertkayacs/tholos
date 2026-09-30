@@ -117,6 +117,7 @@ def test_every_assertion_and_isolation(monkeypatch):
     for _ in range(2):
         result = b.run_scenario(item, PROFILE, transport(reference))
         assert result["passed"], result["failed_assertions"]
+        assert result["status"] == "done" and result["error"] is None
         assert result["steps"] == 11 and result["tokens"] == {"in": 110, "out": 44}
         assert result["invalid_json_count"] == 0
         assert len(result["messages"]) == 23 and result["messages"][-1]["role"] == "assistant"
@@ -159,6 +160,36 @@ def test_failed_assertions_are_recorded():
     )
     result = b.run_scenario(item, PROFILE, transport(ref))
     assert not result["passed"] and len(result["failed_assertions"]) == 4
+
+
+def test_mid_run_transport_failure_is_recorded():
+    read = {"tool": "note_read", "args": {"title": "Brief"}}
+    item = scenario([read], [{"type": "finished"}])
+    item["workspace"]["notes"] = [{"title": "Brief", "body": "Original"}]
+    first = transport([read])
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if len(calls) > 1:
+            raise httpx.ReadTimeout("teacher timed out", request=request)
+        return first.handle_request(request)
+
+    result = b.run_scenario(item, PROFILE, httpx.MockTransport(handler))
+    assert not result["passed"]
+    assert result["status"] == "failed" and result["error"] == "teacher timed out"
+    assert result["steps"] == 1
+
+
+@pytest.mark.parametrize("error,max_steps", [("stuck", 14), ("step limit", 2)])
+def test_model_behavior_failure_is_recorded(error, max_steps):
+    read = {"tool": "note_read", "args": {"title": "Brief"}}
+    item = scenario([read], [{"type": "finished"}])
+    item["max_steps"] = max_steps
+    result = b.run_scenario(item, PROFILE, transport([read] * 3))
+    assert not result["passed"]
+    assert result["status"] == "failed" and result["error"] == error
+    assert result["steps"] == min(3, max_steps)
 
 
 @pytest.mark.parametrize(

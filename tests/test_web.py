@@ -168,6 +168,25 @@ def test_pages_empty_db(client):
         TemplateHTML(response.text)
 
 
+def test_model_timeout_save_and_preserve(client, side):
+    values = {"name": "Local", "base_url": "http://localhost/v1", "model": "small"}
+    assert post(client, "/settings/models", values | {"timeout": "600"}).status_code == 200
+    saved = w.list_models(side)[0]
+    assert saved["timeout"] == 600
+    assert post(client, "/settings/models", values | {"id": saved["id"]}).status_code == 200
+    assert w.get_model(side, saved["id"])["timeout"] == 600
+
+
+@pytest.mark.parametrize("timeout", ["invalid", "0", "-1", "inf", "nan"])
+def test_model_timeout_rejects_invalid_values(client, side, timeout):
+    response = post(client, "/settings/models", {
+        "name": "Local", "base_url": "http://localhost/v1", "model": "small", "timeout": timeout,
+    })
+    assert response.status_code == 200
+    assert w.list_models(side) == []
+    assert "must be numbers" in response.text or "Invalid model settings" in response.text
+
+
 def test_pages_seeded_db(client, side):
     agent_id = seed(side)
     run_id = w.queue_run(side, agent_id, "Scheduled: check", "schedule")

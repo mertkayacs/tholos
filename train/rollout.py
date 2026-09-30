@@ -4,7 +4,7 @@ Usage:
   python train/rollout.py --scenarios scenarios.jsonl \
       --base-url http://127.0.0.1:8080/v1 --model teacher --workers 8 --out rollouts.jsonl
 
-Resumable by scenario id: ids already present in --out are skipped.
+Resumable by scenario id: completed ids in --out are skipped, infrastructure failures rerun.
 
 The bench harness swaps the global fetch.FIXTURES per scenario, which is not
 thread-safe. Every fixture URL is unique per scenario, so this script installs
@@ -58,7 +58,10 @@ def _record(scenario, result, teacher):
         "template": scenario["template"],
         "domain": scenario.get("domain", ""),
         "teacher": teacher,
-        "passed": result["passed"] and not extra,
+        "passed": result["passed"] and not extra and not _infra_failed(result),
+        "status": result["status"],
+        "error": result["error"],
+        "infra_failed": _infra_failed(result),
         "semantic_checked": bool(scenario.get("checks")),
         "failed_assertions": result["failed_assertions"] + extra,
         "steps": result["steps"],
@@ -69,12 +72,14 @@ def _record(scenario, result, teacher):
     }
 
 
-def run_one(scenario, profile, teacher, throttle=None, attempts=6, transport=None):
-    """Run one scenario, retrying failures that happened before the first step.
+def _infra_failed(result):
+    return result["status"] in {"running", "queued"} or (
+        result["status"] == "failed" and result["error"] not in {"stuck", "step limit"}
+    )
 
-    The runtime records an HTTP failure as a failed run with zero steps, so a
-    failed run with no steps is the transient-error signal available here.
-    """
+
+def run_one(scenario, profile, teacher, throttle=None, attempts=6, transport=None):
+    """Retry infrastructure failures from scratch, including failures after a step."""
     if transport is not None:
         # Keep the limit signal per scenario; model.step runs in a separate thread.
         transport = TeacherTransport(transport.transport, transport.throttle, transport.stopped)
@@ -87,7 +92,7 @@ def run_one(scenario, profile, teacher, throttle=None, attempts=6, transport=Non
                       else bench.run_scenario(scenario, profile))
             if transport is not None:
                 transport.raise_if_limited()
-            if result["passed"] or result["steps"] > 0:
+            if not _infra_failed(result):
                 return _record(scenario, result, teacher)
         except UsageLimitError:
             raise
@@ -97,6 +102,7 @@ def run_one(scenario, profile, teacher, throttle=None, attempts=6, transport=Non
                 hint = retry_after(response) if response is not None else None
                 time.sleep(backoff_delay(attempt, hint))
             result = {"passed": False,
+                      "status": "failed", "error": str(exc),
                       "failed_assertions": [{"type": "crash", "error": type(exc).__name__}],
                       "steps": 0, "invalid_json_count": 0, "tokens": {"in": 0, "out": 0},
                       "seconds": 0.0, "messages": []}
@@ -109,6 +115,9 @@ def run_one(scenario, profile, teacher, throttle=None, attempts=6, transport=Non
                 "domain": scenario.get("domain", ""),
                 "teacher": teacher,
                 "passed": False,
+                "status": "failed",
+                "error": repr(exc),
+                "infra_failed": True,
                 "failed_assertions": [{"type": "crash", "error": repr(exc)}],
                 "steps": 0,
                 "invalid_json_count": 0,
@@ -126,7 +135,9 @@ def done_ids(path):
     if Path(path).exists():
         for line in Path(path).read_text(encoding="utf-8").splitlines():
             if line.strip():
-                ids.add(json.loads(line)["id"])
+                record = json.loads(line)
+                if not record.get("infra_failed"):
+                    ids.add(record["id"])
     return ids
 
 
@@ -139,6 +150,7 @@ def main(argv=None):
     parser.add_argument("--out", required=True)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-tokens", type=int, default=512)
+    parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--deadline", type=float, default=None, help="stop new items at Unix time")
     add_hosted_args(parser)
     args = parser.parse_args(argv)
@@ -159,12 +171,13 @@ def main(argv=None):
         "json_mode": args.json_mode,
         "temperature": args.temperature,
         "max_tokens": args.max_tokens,
+        "timeout": args.timeout,
     }
     passed, written = 0, 0
     with (open(args.out, "a", encoding="utf-8") as file,
           TeacherTransport(throttle=throttle) as transport):
         def work(scenario):
-            return run_one(scenario, profile, args.teacher, attempts=1, transport=transport)
+            return run_one(scenario, profile, args.teacher, transport=transport)
 
         for _, result in completed(work, todo, args.workers, args.deadline):
             file.write(json.dumps(result, ensure_ascii=False) + "\n")

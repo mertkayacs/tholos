@@ -27,11 +27,29 @@ def test_database(tmp_path):
     assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert connection.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
     assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert "timeout" in {row["name"] for row in connection.execute("PRAGMA table_info(models)")}
     assert re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", now())
     connection.execute("PRAGMA user_version=2")
     with pytest.raises(ValueError, match="newer"):
         init(connection)
     connection.close()
+
+
+def test_model_timeout_storage(db):
+    mid = w.save_model(db, None, "Local", "http://localhost/v1", "small", None, "schema", 0, 512)
+    assert w.get_model(db, mid)["timeout"] == 120
+    w.save_model(db, mid, "Local", "http://localhost/v1", "small", None, "schema", 0, 512, 600)
+    init(db)
+    assert w.get_model(db, mid)["timeout"] == 600
+
+
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
+def test_model_timeout_validation(db, timeout):
+    with pytest.raises(ValueError, match="Invalid model settings"):
+        w.save_model(
+            db, None, "Local", "http://localhost/v1", "small", None, "schema", 0, 512, timeout
+        )
+    assert w.list_models(db) == []
 
 
 def test_default_home(tmp_path, monkeypatch):

@@ -12,9 +12,16 @@ from tholos import fetch, model, prompt, rules, tools
 from tholos import workspace as w
 from tholos.db import now, tx
 
+LEASE_MARGIN = 30
+
 
 class StaleRun(Exception):
     pass
+
+
+def lease_seconds(timeout: float) -> float:
+    # A model step makes up to two requests (the first reply plus one JSON correction).
+    return max(120, 2 * timeout + LEASE_MARGIN)
 
 
 def args_hash(args: dict) -> str:
@@ -38,10 +45,12 @@ def _fence(db: w.DB, run: dict) -> None:
         raise StaleRun()
 
 
-def _lease(db: w.DB, run: dict) -> None:
+def _lease(db: w.DB, run: dict, timeout: float = 120) -> None:
     with tx(db):
         _fence(db, run)
-        until = (datetime.now(UTC) + timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        until = (datetime.now(UTC) + timedelta(seconds=lease_seconds(timeout))).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         db.execute("UPDATE runs SET lease_until=? WHERE id=?", (until, run["id"]))
 
 
@@ -100,7 +109,7 @@ async def run_one(
             db.execute("UPDATE runs SET messages=? WHERE id=?", (w.dumps(messages), run["id"]))
         count = db.execute("SELECT steps FROM runs WHERE id=?", (run["id"],)).fetchone()[0]
         for n in range(count + 1, agent["max_steps"] + 1):
-            _lease(db, run)
+            _lease(db, run, profile.get("timeout", 120))
             start = time.monotonic()
             reply = await asyncio.to_thread(
                 model.step, profile, messages, tools.schemas(agent["tools"], db), transport
@@ -140,6 +149,8 @@ async def run_one(
                         else tools.run_tool(db, run, agent, reply.tool, reply.args)
                     )
                     status = "retried" if reply.invalid_json_count else "done"
+                    if reply.invalid_json_count:
+                        result["invalid_json_count"] = reply.invalid_json_count
                 if not reply.error and not waiting:
                     signatures = [
                         (s["tool"], args_hash(s["args"]))

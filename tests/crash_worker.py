@@ -15,10 +15,15 @@ async def main():
     db = connect(sys.argv[1])
     init(db)
     if sys.argv[2] == "restart":
-        # Advance recovery past the lease instead of spending two minutes waiting.
-        worker.recover(
-            db, (datetime.now(UTC) + timedelta(seconds=121)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        # Advance recovery past the lease instead of waiting for it to expire.
+        row = db.execute(
+            "SELECT MAX(lease_until) FROM runs WHERE status='running'"
+        ).fetchone()
+        until = row[0] or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        past = (datetime.fromisoformat(until) + timedelta(seconds=1)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
         )
+        worker.recover(db, past)
 
     def handler(request):
         body = json.loads(request.content)

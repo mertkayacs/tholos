@@ -51,6 +51,20 @@ def test_valid_step():
     assert messages == [{"role": "user", "content": "Check"}]
 
 
+@pytest.mark.parametrize("fields,timeout", [({}, 120), ({"timeout": 600}, 600)])
+def test_model_profile_timeout(fields, timeout):
+    def handler(request):
+        assert request.extensions["timeout"] == {
+            "connect": timeout, "read": timeout, "write": timeout, "pool": timeout,
+        }
+        return completion('{"thought":"Done","tool":"finish","args":{"summary":"Ready"}}')
+
+    result = model.step(
+        PROFILE | fields, [], tools.schemas(["finish"]), httpx.MockTransport(handler)
+    )
+    assert result.error is None and result.tool == "finish"
+
+
 @pytest.mark.parametrize("mode", ["schema", "object", "none"])
 def test_missing_optional_args(mode):
     text = w.dumps({"thought": "Read", "tool": "table_read", "args": {"table": "leads"}})
@@ -267,7 +281,8 @@ def test_invalid_twice(text):
 def test_modes_auth_and_ollama(mode):
     def handler(request):
         body = json.loads(request.content)
-        assert body["think"] is False
+        assert body["reasoning_effort"] == "none"
+        assert "think" not in body
         assert request.headers["authorization"] == "Bearer secret"
         if mode in {"schema", "object"}:
             assert body["response_format"] == {"type": "json_object"}
@@ -332,12 +347,13 @@ def test_endpoint_selects_json_mode(url, ollama):
         body = json.loads(request.content)
         if ollama:
             assert body["response_format"] == {"type": "json_object"}
-            assert body["think"] is False
+            assert body["reasoning_effort"] == "none"
         else:
             assert body["response_format"]["type"] == "json_schema"
             assert body["response_format"]["json_schema"]["strict"] is True
             assert "anyOf" in body["response_format"]["json_schema"]["schema"]
-            assert "think" not in body
+            assert "reasoning_effort" not in body
+        assert "think" not in body
         assert body["chat_template_kwargs"] == {"enable_thinking": False}
         return completion('{"thought":"Ready","tool":"finish","args":{"summary":"Done"}}')
 
@@ -345,6 +361,28 @@ def test_endpoint_selects_json_mode(url, ollama):
     result = model.step(profile, [], tools.schemas(["finish"]), httpx.MockTransport(handler))
     assert result.error is None and profile["json_mode"] == "schema"
     assert list(json.loads(result.message()["content"])) == ["thought", "tool", "args"]
+
+
+def test_llama_cpp_profile_payload_is_unchanged():
+    spec = tools.schemas(["finish"])
+    messages = [{"role": "user", "content": "Check"}]
+
+    def handler(request):
+        assert json.loads(request.content) == {
+            "model": "small", "messages": messages, "temperature": 0.2, "max_tokens": 512,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"name": "step", "strict": True, "schema": model.schema(spec)},
+            },
+        }
+        return completion('{"thought":"Ready","tool":"finish","args":{"summary":"Done"}}')
+
+    result = model.step(
+        PROFILE | {"base_url": "http://localhost:8080/v1"},
+        messages, spec, httpx.MockTransport(handler),
+    )
+    assert result.error is None
 
 
 @pytest.mark.parametrize("valid_retry", [True, False])
@@ -358,7 +396,8 @@ def test_ollama_object_mode_still_validates_and_retries(valid_retry):
         body = json.loads(request.content)
         bodies.append(body)
         assert body["response_format"] == {"type": "json_object"}
-        assert body["think"] is False
+        assert body["reasoning_effort"] == "none"
+        assert "think" not in body
         return completion(next(replies))
 
     result = model.step(

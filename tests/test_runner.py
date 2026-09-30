@@ -376,6 +376,113 @@ def test_stale_worker_cannot_commit(db, setup):
     assert not w.get_table(db, "leads")["rows"] and not w.get_run(db, rid)["steps"]
 
 
+@pytest.fixture
+def model_clock(monkeypatch):
+    clock = [datetime.now(UTC).replace(microsecond=0)]
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0]
+
+    def stamp():
+        return clock[0].strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    monkeypatch.setattr(runner, "datetime", Clock)
+    monkeypatch.setattr(runner, "now", stamp)
+    monkeypatch.setattr(worker, "now", stamp)
+    return clock
+
+
+@pytest.mark.parametrize("timeout,elapsed", [(600, 121), (600, 600), (120, 120), (1, 1)])
+def test_model_call_inside_timeout_keeps_lease(db, setup, model_clock, timeout, elapsed):
+    aid, mid = setup
+    w.save_model(db, mid, "Local", "http://local.test/v1", "small", None,
+                 "schema", 0, 512, timeout)
+    w.create_table(db, "items", ["title"], "you")
+    rid = w.queue_run(db, aid, "Add an item", "message")
+
+    def delayed_add(body):
+        model_clock[0] += timedelta(seconds=elapsed)
+        return reply("table_add", table="items", rows=[{"title": "Landed"}])
+
+    def delayed_finish(body):
+        model_clock[0] += timedelta(seconds=elapsed)
+        return reply("finish", summary="Done")
+
+    result = drive(db, scripted(db, [delayed_add, delayed_finish]))
+    assert result["id"] == rid and result["status"] == "done"
+    assert len(result["steps"]) == 2 and result["error"] is None
+    assert w.get_table(db, "items")["rows"][0]["data"] == {"title": "Landed"}
+
+
+@pytest.mark.parametrize("timeout", [120, 600])
+def test_claim_lease_covers_model_timeout(db, setup, model_clock, timeout):
+    aid, mid = setup
+    w.save_model(db, mid, "Local", "http://local.test/v1", "small", None,
+                 "schema", 0, 512, timeout)
+    rid = w.queue_run(db, aid, "Check", "message")
+    claimed = worker.claim(db)
+    lease = datetime.fromisoformat(claimed["lease_until"])
+    assert lease > model_clock[0] + timedelta(seconds=timeout)
+    model_clock[0] += timedelta(seconds=timeout)
+    worker.recover(db)
+    assert w.get_run(db, rid)["status"] == "running"
+
+
+def test_json_correction_keeps_lease_for_both_requests(db, setup, model_clock):
+    rid = w.queue_run(db, setup[0], "Check", "message")
+
+    def invalid(body):
+        model_clock[0] += timedelta(seconds=80)
+        return {}
+
+    def corrected(body):
+        model_clock[0] += timedelta(seconds=80)
+        return reply("finish", summary="Corrected")
+
+    result = drive(db, scripted(db, [invalid, corrected]))
+    assert result["id"] == rid and result["status"] == "done"
+    assert len(result["steps"]) == 1 and result["steps"][0]["status"] == "retried"
+    assert result["steps"][0]["result"]["summary"] == "Corrected"
+    assert result["steps"][0]["result"]["invalid_json_count"] == 1
+
+
+def test_stolen_long_lease_cannot_commit(db, setup):
+    aid, mid = setup
+    w.save_model(db, mid, "Local", "http://local.test/v1", "small", None,
+                 "schema", 0, 512, 600)
+    w.create_table(db, "items", ["title"], "you")
+    rid = w.queue_run(db, aid, "Write", "message")
+    entered, release = threading.Event(), threading.Event()
+
+    def delayed(body):
+        entered.set()
+        assert release.wait(5)
+        return reply("table_add", table="items", rows=[{"title": "Stolen"}])
+
+    async def exercise():
+        original = worker.claim(db)
+        job = asyncio.create_task(runner.run_one(db, original, scripted(db, [delayed])))
+        try:
+            while not entered.is_set():
+                await asyncio.sleep(0.01)
+            expired = (datetime.now(UTC) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            db.execute("UPDATE runs SET lease_until=? WHERE id=?", (expired, rid))
+            worker.recover(db)
+            replacement = worker.claim(db, run_id=rid)
+            assert replacement["fence"] > original["fence"]
+        finally:
+            release.set()
+        await job
+        assert w.get_run(db, rid)["fence"] == replacement["fence"]
+
+    asyncio.run(exercise())
+    result = w.get_run(db, rid)
+    assert result["status"] == "running" and not result["steps"]
+    assert not w.get_table(db, "items")["rows"]
+
+
 def test_worker_concurrency_and_stop(db, setup):
     w.set_setting(db, "workers", 2)
     for _ in range(2):

@@ -165,7 +165,7 @@ def step(
         or "ollama" in parsed.path.lower()
     )
     if ollama:
-        payload["think"] = False
+        payload["reasoning_effort"] = "none"
     mode = profile.get("json_mode", "schema")
     if ollama and mode == "schema":
         mode = "object"
@@ -190,7 +190,9 @@ def step(
         raise ValueError("json_mode must be schema, object, or none")
     headers = {"Authorization": f"Bearer {profile['api_key']}"} if profile.get("api_key") else {}
     result = Step()
-    with httpx.Client(transport=transport, timeout=120, trust_env=False) as client:
+    with httpx.Client(
+        transport=transport, timeout=profile.get("timeout", 120), trust_env=False
+    ) as client:
         for attempt in range(2):
             response = client.post(base_url + "/chat/completions", json=payload, headers=headers)
             response.raise_for_status()

@@ -2,6 +2,7 @@ import csv
 import html
 import io
 import json
+import math
 import os
 import re
 import sqlite3
@@ -116,18 +117,24 @@ def save_model(
     json_mode: str,
     temperature: float,
     max_tokens: int,
+    timeout: float = 120,
 ) -> int:
-    if json_mode not in {"schema", "object", "none"} or max_tokens < 1:
+    if (
+        json_mode not in {"schema", "object", "none"}
+        or max_tokens < 1
+        or not math.isfinite(timeout)
+        or timeout <= 0
+    ):
         raise ValueError("Invalid model settings")
     with tx(db):
         row = db.execute(
-            "INSERT INTO models(id,name,base_url,model,api_key,json_mode,temperature,max_tokens) "
-            "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,"
+            "INSERT INTO models(id,name,base_url,model,api_key,json_mode,temperature,max_tokens,"
+            "timeout) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,"
             "base_url=excluded.base_url,model=excluded.model,api_key=excluded.api_key,"
             "json_mode=excluded.json_mode,temperature=excluded.temperature,"
-            "max_tokens=excluded.max_tokens "
+            "max_tokens=excluded.max_tokens,timeout=excluded.timeout "
             "RETURNING id",
-            (id, name, base_url, model, api_key, json_mode, temperature, max_tokens),
+            (id, name, base_url, model, api_key, json_mode, temperature, max_tokens, timeout),
         ).fetchone()
         return row[0]
 

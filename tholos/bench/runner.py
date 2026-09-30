@@ -220,6 +220,7 @@ def _load(db: w.DB, scenario: dict, profile: dict) -> int:
         profile.get("json_mode", "schema"),
         profile.get("temperature", 0),
         profile.get("max_tokens", 512),
+        profile.get("timeout", 120),
     )
     workspace = scenario["workspace"]
     for agent in workspace["agents"]:
@@ -337,6 +338,8 @@ def run_scenario(
                 "id": scenario["id"],
                 "category": scenario["category"],
                 "passed": not failed,
+                "status": run["status"],
+                "error": run["error"],
                 "failed_assertions": failed,
                 "steps": run["step_count"],
                 "seconds": round(time.monotonic() - start, 3),

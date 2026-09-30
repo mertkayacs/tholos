@@ -65,15 +65,23 @@ def enqueue(db: w.DB, at: str | None = None) -> None:
 
 def claim(db: w.DB, at: str | None = None, run_id: int | None = None) -> dict | None:
     at = at or now()
-    lease = (datetime.fromisoformat(at) + timedelta(seconds=120)).strftime("%Y-%m-%dT%H:%M:%SZ")
     with tx(db):
+        candidate = db.execute(
+            "SELECT r.id,coalesce(m.timeout,120) AS timeout FROM runs r "
+            "JOIN agents a ON a.id=r.agent_id LEFT JOIN models m ON m.id=a.model_id "
+            "WHERE r.status='queued' AND r.due_at<=? AND a.paused=0 "
+            "AND (? IS NULL OR r.id=?) ORDER BY r.due_at,r.id LIMIT 1",
+            (at, run_id, run_id),
+        ).fetchone()
+        if candidate is None:
+            return None
+        lease = (datetime.fromisoformat(at) + timedelta(
+            seconds=runner.lease_seconds(candidate["timeout"])
+        )).strftime("%Y-%m-%dT%H:%M:%SZ")
         row = db.execute(
             "UPDATE runs SET status='running',lease_until=?,fence=fence+1,"
-            "started_at=coalesce(started_at,?) WHERE id=(SELECT r.id FROM runs r "
-            "JOIN agents a ON a.id=r.agent_id WHERE r.status='queued' AND r.due_at<=? "
-            "AND a.paused=0 AND (? IS NULL OR r.id=?) "
-            "ORDER BY r.due_at,r.id LIMIT 1) RETURNING *",
-            (lease, at, at, run_id, run_id),
+            "started_at=coalesce(started_at,?) WHERE id=? RETURNING *",
+            (lease, at, candidate["id"]),
         ).fetchone()
         if row:
             run = dict(row)

@@ -912,7 +912,7 @@ async def settings(request: Request) -> Response:
     )
 
 
-def _model_values(form) -> dict:
+def _model_values(form, timeout: float = 120) -> dict:
     return {
         "name": str(form.get("name", "")).strip(),
         "base_url": str(form.get("base_url", "")).strip(),
@@ -920,6 +920,7 @@ def _model_values(form) -> dict:
         "json_mode": str(form.get("json_mode", "schema")),
         "temperature": float(form.get("temperature") or 0.2),
         "max_tokens": int(str(form.get("max_tokens") or 512)),
+        "timeout": float(form.get("timeout") or timeout),
     }
 
 
@@ -927,17 +928,16 @@ async def model_save(request: Request) -> Response:
     db = db_of(request)
     form = await request.form()
     model_id = int(form["id"]) if form.get("id") else None
+    existing = w.get_model(db, model_id) if model_id else None
     try:
-        values = _model_values(form)
+        values = _model_values(form, existing["timeout"] if existing else 120)
     except ValueError:
         return _settings_page(
             request,
             "settings_models",
-            model_error="Temperature and max tokens must be numbers.",
+            model_error="Temperature, max tokens, and timeout must be numbers.",
         )
-    api_key = str(form.get("api_key", "")) or (
-        w.get_model(db, model_id)["api_key"] if model_id and w.get_model(db, model_id) else None
-    )
+    api_key = str(form.get("api_key", "")) or (existing["api_key"] if existing else None)
     try:
         w.save_model(db, model_id, **values | {"api_key": api_key})
     except ValueError as exc:

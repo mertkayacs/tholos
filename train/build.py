@@ -44,6 +44,8 @@ def parse_trajectory(result):
 
 def keep(result):
     """Return (ok, reason). Applied to passing rollouts only."""
+    if result.get("infra_failed"):
+        return False, "infrastructure failure"
     if not result.get("passed"):
         return False, "failed assertions"
     if result.get("semantic_checked") is not True:
@@ -148,11 +150,13 @@ def main(argv=None):
     results = [json.loads(line) for line in
                Path(args.rollouts).read_text(encoding="utf-8").splitlines()
                if line.strip()]
-    seen, unique = set(), []
+    by_id = {}
     for result in results:
-        if result["id"] not in seen:
-            seen.add(result["id"])
-            unique.append(result)
+        previous = by_id.get(result["id"])
+        if previous is None or previous.get("infra_failed"):
+            by_id[result["id"]] = result
+    infra_failed = sum(bool(result.get("infra_failed")) for result in by_id.values())
+    unique = [result for result in by_id.values() if not result.get("infra_failed")]
 
     kept, reasons = [], Counter()
     for result in unique:
@@ -196,6 +200,7 @@ def main(argv=None):
     table(grouped("category"))
     print("Per teacher:")
     table(grouped("teacher"))
+    print(f"infrastructure failures: {infra_failed} (excluded)")
     print(f"total: {len(unique)} rollouts, {sum(passed.values())} passing, "
           f"{len(kept)} kept ({dropped_dupes} near-duplicates dropped)")
     for reason, count in reasons.most_common():
