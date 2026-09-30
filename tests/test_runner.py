@@ -217,6 +217,84 @@ def test_read_versions_survive_wait(db, setup):
     assert run["id"] == rid and "error" not in run["steps"][2]["result"]
 
 
+@pytest.mark.parametrize("repeat_third", [False, True])
+def test_second_identical_call_nudge(db, setup, repeat_third):
+    w.write_note(db, "Focus", "Use the sources.", "you")
+    rid = w.queue_run(db, setup[0], "Read Focus", "message")
+    read = reply("note_read", title="Focus")
+    result = {"title": "Focus", "text": "Use the sources.", "version": 1}
+    nudge = "You already have this result from your previous step. Use it or take the next step."
+
+    def second(body):
+        assert body["messages"][-1]["content"] == (
+            f"<tool_response>\n{w.dumps(result)}\n</tool_response>"
+        )
+        return read
+
+    def third(body):
+        assert body["messages"][-1]["content"] == (
+            f"<tool_response>\n{w.dumps(result | {'note': nudge})}\n</tool_response>"
+        )
+        return read if repeat_third else reply("finish", summary="Used the sources.")
+
+    run = drive(db, scripted(db, [read, second, third]))
+    assert run["id"] == rid and len(run["steps"]) == 3
+    assert run["status"] == ("failed" if repeat_third else "done")
+    assert run["error"] == ("stuck" if repeat_third else None)
+    assert run["steps"][0]["result"] == result
+    assert run["steps"][1]["result"] == result | {"note": nudge}
+    if repeat_third:
+        assert run["steps"][2]["result"] == result
+
+
+def test_repeated_call_executes_with_reordered_args(db, setup):
+    w.write_note(db, "Focus", "Start.", "you")
+    w.queue_run(db, setup[0], "Append twice", "message")
+    run = drive(
+        db,
+        scripted(
+            db,
+            [
+                reply("note_write", title="Focus", text="Next.", mode="append"),
+                reply("note_write", mode="append", text="Next.", title="Focus"),
+                reply("finish", summary="Appended twice."),
+            ],
+        ),
+    )
+    assert run["status"] == "done"
+    assert w.get_note(db, "Focus")["body"].count("Next.") == 2
+    assert run["steps"][0]["result"] == {"title": "Focus", "version": 2}
+    assert run["steps"][1]["result"] == {
+        "title": "Focus",
+        "version": 3,
+        "note": (
+            "You already have this result from your previous step. Use it or take the next step."
+        ),
+    }
+
+
+def test_changed_args_and_intervening_call_reset_nudge(db, setup):
+    w.queue_run(db, setup[0], "Search", "message")
+    run = drive(
+        db,
+        scripted(
+            db,
+            [
+                reply("search", query="one"),
+                reply("search", query="two"),
+                reply("search", query="one"),
+                reply("search", query="one"),
+                reply("finish", summary="Done"),
+            ],
+        ),
+    )
+    assert run["status"] == "done"
+    assert all("note" not in step["result"] for step in run["steps"][:3])
+    assert run["steps"][3]["result"]["note"] == (
+        "You already have this result from your previous step. Use it or take the next step."
+    )
+
+
 def test_stuck_and_step_limit(db, setup):
     rid = w.queue_run(db, setup[0], "Search", "message")
     run = drive(db, scripted(db, [reply("search", query="missing")] * 3))

@@ -140,6 +140,21 @@ async def run_one(
                         else tools.run_tool(db, run, agent, reply.tool, reply.args)
                     )
                     status = "retried" if reply.invalid_json_count else "done"
+                if not reply.error and not waiting:
+                    signatures = [
+                        (s["tool"], args_hash(s["args"]))
+                        for s in w.get_run(db, run["id"])["steps"][-2:]
+                    ]
+                    signature = (reply.tool, args_hash(reply.args))
+                    if (
+                        signatures
+                        and signatures[-1] == signature
+                        and (len(signatures) == 1 or signatures[-2] != signature)
+                    ):
+                        result["note"] = (
+                            "You already have this result from your previous step. "
+                            "Use it or take the next step."
+                        )
                 result = tools.compact(result)
                 step_id = db.execute(
                     "INSERT INTO steps(run_id,n,thought,tool,args,result,status,ms,created_at) "
