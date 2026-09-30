@@ -187,3 +187,130 @@ def test_scalar_cells_validate_and_preserve_types(db, context, value):
     stored = result["row"]["data"]["value"]
     assert stored == expected and type(stored) is type(expected)
     assert w.recent_changes(db, "row", row_id)[0]["after"]["data"]["value"] == expected
+
+
+@pytest.fixture
+def query_table(db):
+    w.create_table(db, "items", ["title", "status", "priority", "qty", "price", "owner"], "you")
+    return w.add_rows(
+        db,
+        "items",
+        [
+            {
+                "title": "North, and west",
+                "status": "new",
+                "priority": "high",
+                "qty": 0,
+                "price": "2",
+                "owner": "Sara",
+            },
+            {
+                "title": "Second case",
+                "status": "Closed",
+                "priority": "low",
+                "qty": 2,
+                "price": 10,
+                "owner": "Tom",
+            },
+            {
+                "title": "Small model",
+                "status": "renewed",
+                "priority": "high",
+                "qty": "10",
+                "price": -1.5,
+                "owner": "Lee",
+            },
+            {
+                "title": "Research and development",
+                "status": "NEW",
+                "priority": "medium",
+                "qty": None,
+                "price": "2.0",
+                "owner": "Sara",
+            },
+        ],
+        "you",
+    )
+
+
+@pytest.mark.parametrize(
+    "query,indexes",
+    [
+        (None, [0, 1, 2, 3]),
+        ("", [0, 1, 2, 3]),
+        ("   ", [0, 1, 2, 3]),
+        ("*", [0, 1, 2, 3]),
+        ("all", [0, 1, 2, 3]),
+        (" ALL ", [0, 1, 2, 3]),
+        ("status=new", [0, 3]),
+        ("status = 'new'", [0, 3]),
+        ("status != 'Closed'", [0, 2, 3]),
+        ("qty=0", [0]),
+        ("id, title, status, priority", [0, 1, 2, 3]),
+        ("id, title", [0, 1, 2, 3]),
+        ("title, status", [0, 1, 2, 3]),
+        ("unknown, other", [0, 1, 2, 3]),
+        ('STATUS == "NeW"', [0, 3]),
+        ("qty == 010", [2]),
+        ("status:new", [0, 2, 3]),
+        ("title:small", [2]),
+        ("qty:0", [0]),
+        ("qty>2", [2]),
+        ("qty < 2", [0]),
+        ("qty>=2", [1, 2]),
+        ("qty <= 2", [0, 1]),
+        ("price=2", [0, 3]),
+        ("price!=2.0", [1, 2]),
+        ("price > 2", [1]),
+        ("price>=2", [0, 1, 3]),
+        ("price < 0", [2]),
+        ("price<=-1.5", [2]),
+        ("title~'and'", [0, 3]),
+        ("SMALL MODEL", [2]),
+        ("title = 'Small model'", [2]),
+        ("title = 'North, and west'", [0]),
+        ("title~'Research and development'", [3]),
+        ("status=new, priority=high", [0]),
+        ("status=NEW AnD qty>=0", [0]),
+        ("status != Closed && qty >= 2", [2]),
+        ("owner:Sara priority:high", [0]),
+        ("missing=value", [0, 1, 2, 3]),
+        ("missing=value, status=Closed", [1]),
+    ],
+)
+def test_table_query_forms(db, context, query_table, query, indexes):
+    run, agent = context
+    result = tools.run_tool(
+        db, run, agent, "table_read", {"table": "items", "query": query, "limit": 50}
+    )
+    assert "error" not in result, result
+    assert [row["row"] for row in result["rows"]] == [query_table[i] for i in indexes]
+    assert result["total"] == len(indexes)
+    assert run["_reads"]["rows"] == {query_table[i]: 1 for i in indexes}
+
+
+def test_table_query_diagnostics_and_limits(db, context, query_table):
+    run, agent = context
+
+    def read(query, limit=50):
+        return tools.run_tool(
+            db, run, agent, "table_read", {"table": "items", "query": query, "limit": limit}
+        )
+
+    result = read("missing=value, status='absent'")
+    assert result["rows"] == [] and result["total"] == 0 and result["table_rows"] == 4
+    assert result["ignored_columns"] == ["missing"]
+    assert "missing" in result["hint"] and "col=value" in result["hint"]
+    assert "col!=value" in result["hint"] and "col>=n" in result["hint"]
+    assert "\n" not in result["hint"] and not run["_reads"]["rows"]
+    result = read("id, title, status, priority", 2)
+    assert result["total"] == 4 and len(result["rows"]) == 2
+    assert result["ignored_columns"] == ["id"] and "column list" in result["hint"].lower()
+    result = read("unknown=ignored && other!=anything")
+    assert result["total"] == 4 and result["ignored_columns"] == ["other", "unknown"]
+    w.create_table(db, "empty", ["status"], "you")
+    empty = tools.run_tool(
+        db, run, agent, "table_read", {"table": "empty", "query": "status=new", "limit": None}
+    )
+    assert empty["rows"] == [] and empty["total"] == 0
+    assert "table_rows" not in empty and "hint" not in empty

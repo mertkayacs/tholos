@@ -1,0 +1,8 @@
+{
+  "id": "memory-010", "category": "memory", "template": "b-memory-save-and-act", "agent": "Nikolai",
+  "workspace": {"agents": [{"name": "Nikolai", "role": "You log toolbox purchases and remember brand preferences.", "tools": ["remember", "table_add", "finish"], "max_steps": 5}], "tables": [{"name": "tool_purchases", "columns": ["item", "brand", "quantity"], "rows": []}]},
+  "trigger": {"kind": "message", "text": "Log 2 pairs of insulated pliers from Wrenforge. For future electrical tool suggestions I prefer Wrenforge; please remember it."},
+  "reference": [{"tool": "table_add", "args": {"table": "tool_purchases", "rows": [{"item": "Insulated pliers", "brand": "Wrenforge", "quantity": 2}]}}, {"tool": "remember", "args": {"fact": "The owner prefers Wrenforge for electrical tool suggestions."}}, {"tool": "finish", "args": {"summary": "Logged the pliers and saved Wrenforge as your electrical tool preference."}}],
+  "expect": [{"type": "row", "table": "tool_purchases", "where": {"item": "Insulated pliers"}, "has": {"brand": "Wrenforge", "quantity": 2}}, {"type": "rows", "table": "tool_purchases", "count": 1}, {"type": "memory", "agent": "Nikolai", "contains": "Wrenforge"}, {"type": "finished"}],
+  "max_steps": 5, "about": "Logs a purchase while saving a preference for later recommendations."
+}

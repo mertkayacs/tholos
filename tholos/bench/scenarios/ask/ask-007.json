@@ -1,0 +1,9 @@
+{
+  "id": "ask-007", "category": "ask", "template": "b-ask-date", "agent": "Leonie",
+  "workspace": {"agents": [{"name": "Leonie", "role": "You keep a magazine's publishing calendar.", "tools": ["ask", "table_read", "table_update", "finish"], "max_steps": 6}], "tables": [{"name": "articles", "columns": ["slug", "publish", "status"], "rows": [{"slug": "canal-restoration", "publish": "2026-10-03", "status": "ready"}, {"slug": "night-buses", "publish": "2026-10-04", "status": "draft"}]}]},
+  "trigger": {"kind": "message", "text": "Push canal-restoration back. Ask me for the revised publication date."},
+  "respond": {"answer": "October 9, 2026."},
+  "reference": [{"tool": "ask", "args": {"question": "What is the new publication date for canal-restoration?"}}, {"tool": "table_read", "args": {"table": "articles", "query": "slug:canal-restoration", "limit": null}}, {"tool": "table_update", "args": {"table": "articles", "row": 1, "values": {"slug": null, "publish": "2026-10-09", "status": null}}}, {"tool": "finish", "args": {"summary": "Moved canal-restoration to October 9, keeping it ready."}}],
+  "expect": [{"type": "asked"}, {"type": "row", "table": "articles", "where": {"slug": "canal-restoration"}, "has": {"publish": "2026-10-09", "status": "ready"}}, {"type": "row", "table": "articles", "where": {"slug": "night-buses"}, "has": {"publish": "2026-10-04"}}, {"type": "finished"}],
+  "max_steps": 6, "about": "Clarifies a postponed publication date while preserving article status."
+}

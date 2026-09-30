@@ -1,0 +1,8 @@
+{
+  "id": "follow_up-005", "category": "follow_up", "template": "b-follow-hours", "agent": "Ottilie",
+  "workspace": {"agents": [{"name": "Ottilie", "role": "You follow up on print proof approvals.", "tools": ["table_read", "follow_up", "finish"], "max_steps": 5}], "tables": [{"name": "proofs", "columns": ["job", "approved"], "rows": [{"job": "Festival poster", "approved": "no"}, {"job": "Cafe menu", "approved": "yes"}]}]},
+  "trigger": {"kind": "follow_up", "note": "Read Festival poster's approval status. If it is still unapproved, schedule another check in six hours."},
+  "reference": [{"tool": "table_read", "args": {"table": "proofs", "query": "job:Festival", "limit": null}}, {"tool": "follow_up", "args": {"minutes": 360, "note": "Recheck the Festival poster proof approval."}}, {"tool": "finish", "args": {"summary": "The Festival poster remains unapproved; scheduled another check in six hours."}}],
+  "expect": [{"type": "follow_up", "min_minutes": 359, "max_minutes": 361}, {"type": "unchanged", "table": "proofs"}, {"type": "finished"}],
+  "max_steps": 5, "about": "Schedules another check when a previous follow-up finds an approval still pending."
+}

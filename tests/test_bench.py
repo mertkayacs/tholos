@@ -119,7 +119,7 @@ def test_every_assertion_and_isolation(monkeypatch):
         assert result["passed"], result["failed_assertions"]
         assert result["steps"] == 11 and result["tokens"] == {"in": 110, "out": 44}
         assert result["invalid_json_count"] == 0
-        assert len(result["messages"]) == 24
+        assert len(result["messages"]) == 23 and result["messages"][-1]["role"] == "assistant"
         assert fetch.FIXTURES is previous
 
 

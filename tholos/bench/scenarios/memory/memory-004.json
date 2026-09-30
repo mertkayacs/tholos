@@ -1,0 +1,8 @@
+{
+  "id": "memory-004", "category": "memory", "template": "b-memory-routing", "agent": "Lucinda",
+  "workspace": {"agents": [{"name": "Lucinda", "role": "You route community newsletter requests.", "tools": ["task_add", "finish"], "max_steps": 4}, {"name": "Proofroom", "role": "You review community notices for publication.", "tools": ["note_write", "finish"]}, {"name": "Newsroom", "role": "You gather interview material.", "tools": ["table_read", "finish"]}], "memories": [{"agent": "Lucinda", "text": "Send proofreading requests for the community newsletter to Proofroom."}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Review the notice", "details": "Pass the October composting notice to whoever normally proofreads the newsletter. Ask them to check the opening hours."},
+  "reference": [{"tool": "task_add", "args": {"to": "Proofroom", "title": "Proofread October composting notice", "details": "Check the October composting notice for the community newsletter, especially the opening hours."}}, {"tool": "finish", "args": {"summary": "Sent the notice to Proofroom under your saved routing preference."}}],
+  "expect": [{"type": "task", "to": "Proofroom", "title_contains": "composting"}, {"type": "no_task", "to": "Newsroom"}, {"type": "finished"}],
+  "max_steps": 4, "about": "Uses an existing memory to choose a teammate for proofreading."
+}

@@ -112,7 +112,9 @@ def validate_assertion(assertion, path):
     required, optional = ASSERTIONS[atype]
     keys = set(assertion) - {"type"}
     assert required <= keys, f"{path} ({atype}) missing {required - keys}"
-    assert keys <= (required | optional), f"{path} ({atype}) has unknown fields {keys - (required | optional)}"
+    assert keys <= (required | optional), (
+        f"{path} ({atype}) has unknown fields {keys - (required | optional)}"
+    )
     if atype == "status":
         assert assertion["is"] in {"done", "waiting", "failed"}, f"{path} bad status"
     if atype == "row":
@@ -124,13 +126,17 @@ def validate_assertion(assertion, path):
             for value in assertion["has"].values():
                 assert is_match(value), f"{path} bad has match"
     if atype == "rows":
-        assert any(k in assertion for k in ("count", "min", "max")), f"{path} rows needs count/min/max"
+        assert any(k in assertion for k in ("count", "min", "max")), (
+            f"{path} rows needs count/min/max"
+        )
     if atype in ("note",):
         for key in ("contains", "not_contains"):
             if key in assertion:
                 assert isinstance(assertion[key], list), f"{path} {key} must be a list"
     if atype == "unchanged":
-        assert ("table" in assertion) != ("note" in assertion), f"{path} needs exactly one of table/note"
+        assert ("table" in assertion) != ("note" in assertion), (
+            f"{path} needs exactly one of table/note"
+        )
     if atype in ("called", "not_called"):
         assert assertion["tool"] in TOOLS, f"{path} bad tool"
         if "args" in assertion:
@@ -140,7 +146,9 @@ def validate_assertion(assertion, path):
     if atype == "approval":
         assert assertion["tool"] in TOOLS, f"{path} bad tool"
     if atype == "finish_contains":
-        assert isinstance(assertion["any"], list) and assertion["any"], f"{path} any must be nonempty list"
+        assert isinstance(assertion["any"], list) and assertion["any"], (
+            f"{path} any must be nonempty list"
+        )
     if atype == "max_steps":
         assert isinstance(assertion["n"], int), f"{path} n must be int"
     if atype == "follow_up":
@@ -281,7 +289,7 @@ def test_respond_and_interfere_shape():
 
 
 def test_no_em_dash_anywhere():
-    for path, sc in all_scenarios():
+    for path, _sc in all_scenarios():
         text = path.read_text(encoding="utf-8")
         assert "\u2014" not in text, f"em dash in {path}"
 
@@ -290,7 +298,7 @@ BANNED = ["acme", "example corp", "lorem", "foo bar", "john doe", "jane doe"]
 
 
 def test_no_placeholder_text():
-    for path, sc in all_scenarios():
+    for path, _sc in all_scenarios():
         text = path.read_text(encoding="utf-8").casefold()
         for term in BANNED:
             assert not re.search(rf"\b{re.escape(term)}\b", text), f"placeholder {term!r} in {path}"
@@ -311,7 +319,9 @@ def test_table_writes_use_known_columns():
             elif tool == "table_update":
                 table = tables.get(args["table"]) or created.get(args["table"])
                 assert table is not None, f"{path} table_update to unknown table {args['table']!r}"
-                assert set(args["values"]) <= set(table["columns"]), f"{path} table_update unknown columns"
+                assert set(args["values"]) <= set(table["columns"]), (
+                    f"{path} table_update unknown columns"
+                )
             elif tool == "table_create":
                 assert 1 <= len(args["columns"]) <= 12, f"{path} table_create bad column count"
                 created[args["table"]] = {"columns": args["columns"]}

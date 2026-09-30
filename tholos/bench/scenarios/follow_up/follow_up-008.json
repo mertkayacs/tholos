@@ -1,0 +1,8 @@
+{
+  "id": "follow_up-008", "category": "follow_up", "template": "b-follow-days", "agent": "Ewan",
+  "workspace": {"agents": [{"name": "Ewan", "role": "You schedule checks for open-source release milestones.", "tools": ["follow_up", "finish"], "max_steps": 3}]},
+  "trigger": {"kind": "message", "text": "Check the translation milestone again exactly one week from now."},
+  "reference": [{"tool": "follow_up", "args": {"minutes": 10080, "note": "Check progress on the translation milestone."}}, {"tool": "finish", "args": {"summary": "Scheduled the translation milestone check one week from now."}}],
+  "expect": [{"type": "follow_up", "min_minutes": 10080, "max_minutes": 10080}, {"type": "finished"}],
+  "max_steps": 3, "about": "Schedules a follow-up at the maximum supported one-week delay."
+}

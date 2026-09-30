@@ -1,0 +1,9 @@
+{
+  "id": "web_research-006", "category": "web_research", "template": "b-web-doc-note", "agent": "Maksim",
+  "workspace": {"agents": [{"name": "Maksim", "role": "You summarize public command-line documentation.", "tools": ["web_fetch", "note_write", "finish"], "max_steps": 5}], "rules": [{"agent": "Maksim", "tool": "web_fetch", "match": "reedcli.test", "decision": "allow"}]},
+  "trigger": {"kind": "message", "text": "Read https://reedcli.test/docs/export. Make a new note 'Reed export flags' with the CSV command and the flag for including archived rows."},
+  "fixtures": {"https://reedcli.test/docs/export": "<html><head><title>Reed export documentation</title></head><body><h1>Export</h1><p>Run reed export --type csv to export active rows.</p><p>Add --include-archived to include archived rows.</p><p>The default file name is reed-export.csv.</p></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://reedcli.test/docs/export"}}, {"tool": "note_write", "args": {"title": "Reed export flags", "text": "CSV export: reed export --type csv. Add --include-archived to include archived rows.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Recorded the CSV export command and archive flag."}}],
+  "expect": [{"type": "note", "title": "Reed export flags", "contains": ["reed export --type csv", "--include-archived"]}, {"type": "finished"}],
+  "max_steps": 5, "about": "Extracts an executable command and an option from a documentation fixture."
+}

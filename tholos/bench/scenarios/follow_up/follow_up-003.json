@@ -1,0 +1,8 @@
+{
+  "id": "follow_up-003", "category": "follow_up", "template": "b-follow-short", "agent": "Nadine",
+  "workspace": {"agents": [{"name": "Nadine", "role": "You track greenhouse conditions.", "tools": ["note_read", "follow_up", "finish"], "max_steps": 5}], "notes": [{"title": "Greenhouse vent", "body": "Vent opened at 10:10 after the temperature reached 29 C."}]},
+  "trigger": {"kind": "message", "text": "Read the greenhouse vent note and check again in an hour. Don't change the note."},
+  "reference": [{"tool": "note_read", "args": {"title": "Greenhouse vent"}}, {"tool": "follow_up", "args": {"minutes": 60, "note": "Check greenhouse temperature and whether the vent should remain open."}}, {"tool": "finish", "args": {"summary": "Read the vent log and scheduled a check in one hour."}}],
+  "expect": [{"type": "follow_up", "min_minutes": 59, "max_minutes": 61}, {"type": "unchanged", "note": "Greenhouse vent"}, {"type": "finished"}],
+  "max_steps": 5, "about": "Turns an hour-long delay into a greenhouse follow-up without editing the log."
+}

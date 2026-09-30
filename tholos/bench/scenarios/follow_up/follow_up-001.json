@@ -1,0 +1,8 @@
+{
+  "id": "follow_up-001", "category": "follow_up", "template": "b-follow-short", "agent": "Amelie",
+  "workspace": {"agents": [{"name": "Amelie", "role": "You monitor laundry equipment and schedule checks.", "tools": ["follow_up", "finish"], "max_steps": 3}]},
+  "trigger": {"kind": "message", "text": "Check the dryer again in five minutes. The load is nearly done."},
+  "reference": [{"tool": "follow_up", "args": {"minutes": 5, "note": "Check whether the dryer load has finished."}}, {"tool": "finish", "args": {"summary": "Scheduled a dryer check in five minutes."}}],
+  "expect": [{"type": "follow_up", "min_minutes": 5, "max_minutes": 5}, {"type": "finished"}, {"type": "max_steps", "n": 2}],
+  "max_steps": 3, "about": "Schedules a follow-up at the minimum supported delay."
+}

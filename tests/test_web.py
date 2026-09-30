@@ -3,6 +3,8 @@ import socket
 import threading
 import time
 import types
+from html.parser import HTMLParser
+from pathlib import Path
 
 import httpx
 import pytest
@@ -49,6 +51,20 @@ class Worker:
 worker_stub = types.SimpleNamespace(Worker=Worker)
 
 ORIGIN = {"Origin": "http://testserver"}
+
+
+class TemplateHTML(HTMLParser):
+    def __init__(self, body):
+        super().__init__()
+        self.elements = []
+        self.feed(body)
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        assert "style" not in attrs, f"Inline style on {tag}"
+        assert tag != "style", "Inline stylesheet"
+        assert tag != "script" or attrs.get("src"), "Inline script"
+        self.elements.append((tag, attrs))
 
 
 @pytest.fixture
@@ -148,6 +164,7 @@ def test_pages_empty_db(client):
     for path in ("/", "/agents", "/agents/new", "/tables", "/notes", "/activity", "/settings"):
         response = client.get(path)
         assert response.status_code == 200, path
+        TemplateHTML(response.text)
 
 
 def test_pages_seeded_db(client, side):
@@ -161,6 +178,50 @@ def test_pages_seeded_db(client, side):
     for path in paths:
         response = client.get(path)
         assert response.status_code == 200, (path, response.text[:500])
+        TemplateHTML(response.text)
+
+
+def test_template_routes_follow_csp(client, side):
+    agent_id = seed(side)
+    run_id = w.queue_run(side, agent_id, "Scheduled: check", "schedule")
+    _approval(side)
+    _approval(side, kind="question")
+    paths = [
+        "/", "/agents", "/agents/new", "/agents/Scout", f"/runs/{run_id}",
+        "/tables", "/tables/leads", "/notes", "/notes/Focus", "/activity", "/settings",
+        "/partials/activity", "/partials/tables/leads/grid", "/partials/notes/Focus/editor",
+        *[f"/partials/board/{lane}" for lane in ("scheduled", "working", "waiting", "done")],
+    ]
+    for path in paths:
+        response = client.get(path)
+        assert response.status_code == 200, path
+        TemplateHTML(response.text)
+    # Check conditional template branches too, including test/error responses.
+    for path in (Path(web.__file__).parent / "templates").rglob("*"):
+        if path.suffix in {".html", ".svg"}:
+            source = path.read_text()
+            assert "style=" not in source, path
+            assert "<style" not in source, path
+
+
+def test_agent_prompts_and_primary_action(client, side):
+    seed(side)
+    page = TemplateHTML(client.get("/agents/Scout").text)
+    prompts = [(tag, attrs) for tag, attrs in page.elements if attrs.get("name") == "prompt"]
+    assert len(prompts) == 2
+    assert all(tag == "textarea" and 2 <= int(attrs["rows"]) <= 4 for tag, attrs in prompts)
+    primary = [attrs for _, attrs in page.elements if "primary" in attrs.get("class", "").split()]
+    assert len(primary) == 1
+
+
+def test_empty_table_has_grid_empty_state(client, side):
+    w.create_table(side, "empty", ["title", "score"], "you")
+    response = client.get("/tables/empty")
+    page = TemplateHTML(response.text)
+    empty_states = [attrs for tag, attrs in page.elements if tag == "p"
+                    and "grid-empty" in attrs.get("class", "").split()]
+    assert len(empty_states) == 1
+    assert "No rows yet. Agents add rows here, or add one yourself." in response.text
 
 
 def test_security_headers(client):
@@ -333,6 +394,7 @@ def test_non_loopback_requires_login(home, side, stubs, monkeypatch):
         login = client.get("/login")
         assert login.status_code == 200
         assert "Access token" in login.text
+        TemplateHTML(login.text)
 
         token = w.get_setting(side, "access_token")
         assert token
@@ -340,6 +402,7 @@ def test_non_loopback_requires_login(home, side, stubs, monkeypatch):
             "/login", data={"token": "wrong"}, headers=ORIGIN, follow_redirects=False
         )
         assert bad.status_code == 403
+        TemplateHTML(bad.text)
         good = client.post(
             "/login", data={"token": token}, headers=ORIGIN, follow_redirects=False
         )

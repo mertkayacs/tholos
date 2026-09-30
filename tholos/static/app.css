@@ -65,11 +65,18 @@ pre {
 small, .small { font-size: 12px; }
 .muted { color: var(--muted); }
 .num { font-variant-numeric: tabular-nums; }
+.error { color: var(--danger); }
+.success { color: var(--done); }
+.grow { flex: 1; min-width: 0; }
+.flush { margin: 0; }
+.nowrap { white-space: nowrap; }
+.pre-wrap { white-space: pre-wrap; }
 
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 2px; }
 
 .icon { width: 16px; height: 16px; flex: none; vertical-align: -3px; }
 .icon.big { width: 20px; height: 20px; }
+.icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 
 /* Layout */
 .shell { display: flex; min-height: 100vh; }
@@ -97,6 +104,8 @@ small, .small { font-size: 12px; }
 .page-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .page-head h1 { margin: 0; }
 .page-head .spacer { flex: 1; }
+.page-head-compact { margin-bottom: 8px; }
+.heading-small { font-size: 18px; }
 
 .menu-toggle { display: none; }
 
@@ -150,7 +159,8 @@ small, .small { font-size: 12px; }
   padding: 2px 10px; font-size: 12px; font-weight: 600; border: 1px solid var(--line);
   background: var(--surface); color: var(--muted); white-space: nowrap;
 }
-.badge .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--ink); }
+.dot { width: 8px; height: 8px; flex: none; border-radius: 999px; background: var(--ink); }
+.working-dot { animation: pulse 1.6s ease-in-out infinite; }
 .badge.working { color: var(--ink); }
 .badge.working .dot { animation: pulse 1.6s ease-in-out infinite; }
 .badge.waiting { background: var(--wait-tint); border-color: var(--wait-tint); color: var(--wait); }
@@ -168,6 +178,7 @@ small, .small { font-size: 12px; }
   border-left: 3px solid var(--wait);
 }
 .card.done-card { border-left: 3px solid var(--done); }
+.card.sunken { background: var(--sunken); }
 .card .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .empty {
   border: 1px dashed var(--line-ui); border-radius: 10px; padding: 24px;
@@ -178,13 +189,27 @@ small, .small { font-size: 12px; }
 .board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .lane h2 { font-size: 18px; display: flex; align-items: center; gap: 8px; }
 .lane .count-pill { font-size: 12px; color: var(--muted); font-family: var(--sans); font-weight: 400; }
+.task-fields {
+  display: grid; grid-template-columns: 160px minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: 12px; align-items: end;
+}
+.task-fields .field, .task-fields input, .task-fields select { max-width: none; margin-bottom: 0; }
 @media (max-width: 1023px) {
   .board { grid-template-columns: 1fr; }
   .lane.waiting-lane { order: -1; }
+  .task-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Forms */
-.field { margin-bottom: 16px; max-width: 560px; }
+.field { margin-bottom: 16px; max-width: 560px; min-width: 0; }
+.field-compact { max-width: 128px; }
+.field-narrow { max-width: 192px; }
+.field-name { max-width: 240px; }
+.field-wide, .field-wide textarea { max-width: none; }
+.field-flush { margin-bottom: 0; }
+.tool-fieldset { border: 0; padding: 0; margin: 0 0 16px; }
+.tool-fieldset legend { font-weight: 600; margin-bottom: 4px; }
+.checkbox { width: 16px; height: 16px; accent-color: var(--ink); }
 .field label { display: block; font-weight: 600; margin-bottom: 4px; }
 .field .hint { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .field .error { color: var(--danger); font-size: 13px; margin-top: 4px; }
@@ -203,6 +228,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .checks input { width: 16px; height: 16px; accent-color: var(--ink); }
 .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
 .inline-form { display: inline; }
+.list-row { align-items: center; margin-bottom: 8px; }
+.memory-row { margin-bottom: 8px; }
 
 /* Run timeline */
 .timeline { list-style: none; margin: 0; padding: 0 0 0 20px; position: relative; }
@@ -219,6 +246,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .timeline details { margin-top: 4px; }
 .timeline summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .meta-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; color: var(--muted); }
+.run-meta { margin-bottom: 24px; }
 
 /* Grid (tables) */
 .grid-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
@@ -231,6 +259,9 @@ table.grid thead th {
 table.grid td.rownum, table.grid th.rownum { color: var(--muted); width: 48px; text-align: right; }
 table.grid td.num { text-align: right; }
 table.grid tfoot td { background: var(--sunken); font-weight: 600; text-align: right; }
+.grid-empty { margin: 0; padding: 24px; text-align: center; color: var(--muted); }
+.grid-actions { margin-top: 16px; }
+.table-changes { margin-top: 32px; }
 .cell-form { margin: 0; }
 input.cell {
   border: 1px solid transparent; background: transparent; width: 100%; min-width: 80px;
@@ -238,6 +269,7 @@ input.cell {
 }
 input.cell:hover { border-color: var(--line-ui); }
 input.cell:focus { border-color: var(--ink); outline: 2px solid var(--ink); outline-offset: 2px; background: var(--surface); }
+input.cell.numeric-cell { text-align: right; }
 .conflict {
   display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
   background: var(--wait-tint); border-left: 3px solid var(--wait);
@@ -249,6 +281,7 @@ input.cell:focus { border-color: var(--ink); outline: 2px solid var(--ink); outl
 .note-body h1 { font-size: 28px; } .note-body h2 { font-size: 22px; } .note-body h3 { font-size: 18px; }
 .note-body code { background: var(--sunken); padding: 1px 5px; border-radius: 4px; }
 .note-body pre code { background: none; padding: 0; }
+.note-editor { min-height: 240px; }
 
 /* Toasts */
 #toasts {
@@ -274,4 +307,5 @@ input.cell:focus { border-color: var(--ink); outline: 2px solid var(--ink); outl
 @media (max-width: 480px) {
   .main { padding: 16px 12px 32px; }
   .form-row { flex-direction: column; align-items: stretch; }
+  .field-compact, .field-narrow, .field-name { max-width: none; }
 }

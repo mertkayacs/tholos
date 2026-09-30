@@ -1,0 +1,9 @@
+{
+  "id": "web_research-007", "category": "web_research", "template": "b-web-doc-note", "agent": "Soraya",
+  "workspace": {"agents": [{"name": "Soraya", "role": "You collect visitor information for group trips.", "tools": ["web_fetch", "note_read", "note_write", "finish"], "max_steps": 6}], "notes": [{"title": "Botanic garden visit", "body": "The group will travel by tram."}], "rules": [{"agent": "*", "tool": "web_fetch", "match": "fernpark.test", "decision": "allow"}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Visit information", "details": "Append the opening hours and accessible entrance from https://fernpark.test/visit to Botanic garden visit. Preserve our travel note."},
+  "fixtures": {"https://fernpark.test/visit": "<html><head><title>Fern Park visitor guide</title></head><body><h1>Plan your visit</h1><p>Open Tuesday through Sunday, 09:30 to 17:00. Closed Monday.</p><p>Step-free entrance: Willow Gate on the east side.</p><p>Last entry is 16:15.</p></body></html>"},
+  "reference": [{"tool": "note_read", "args": {"title": "Botanic garden visit"}}, {"tool": "web_fetch", "args": {"url": "https://fernpark.test/visit"}}, {"tool": "note_write", "args": {"title": "Botanic garden visit", "text": "\nOpen Tuesday through Sunday, 09:30 to 17:00; closed Monday. Step-free access is via Willow Gate on the east side.", "mode": "append"}}, {"tool": "finish", "args": {"summary": "Added the opening hours and Willow Gate entrance details."}}],
+  "expect": [{"type": "note", "title": "Botanic garden visit", "contains": ["travel by tram", "09:30", "17:00", "closed Monday", "Willow Gate"]}, {"type": "finished"}],
+  "max_steps": 6, "about": "Appends visitor facts from a fixture page while preserving existing travel information."
+}

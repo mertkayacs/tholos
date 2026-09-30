@@ -157,6 +157,7 @@ async def run_one(
                     ),
                 ).lastrowid
                 messages.append(reply.message())
+                finished = reply.tool == "finish" and not waiting and "error" not in result
                 if waiting:
                     kind = "question" if reply.tool == "ask" else "approve"
                     preview = (
@@ -179,9 +180,8 @@ async def run_one(
                             now(),
                         ),
                     )
-                else:
+                elif not finished:
                     messages.append(prompt.tool_response(result))
-                finished = reply.tool == "finish" and not waiting and "error" not in result
                 state = "waiting" if waiting else "done" if finished else "running"
                 db.execute(
                     "UPDATE runs SET messages=?,steps=?,tokens_in=tokens_in+?,"
@@ -247,7 +247,9 @@ def _resume(
     db: w.DB, approval: dict, run: dict, result: dict, state: str, text: str | None = None
 ) -> None:
     result = tools.compact(result)
-    run["messages"].append(prompt.tool_response(result))
+    finished = approval["tool"] == "finish" and "error" not in result
+    if not finished:
+        run["messages"].append(prompt.tool_response(result))
     db.execute(
         "UPDATE approvals SET status=?,answer=?,decided_at=? WHERE id=?",
         (state, text, now(), approval["id"]),
@@ -255,7 +257,6 @@ def _resume(
     db.execute(
         "UPDATE steps SET result=?,status='done' WHERE id=?", (w.dumps(result), approval["step_id"])
     )
-    finished = approval["tool"] == "finish" and "error" not in result
     db.execute(
         "UPDATE runs SET status=?,messages=?,due_at=?,fence=fence+1,ended_at=? WHERE id=?",
         (

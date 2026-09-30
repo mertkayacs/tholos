@@ -27,23 +27,23 @@
 <div class="card">
   <form hx-post="/tasks" hx-target="#working-cards" data-reset>
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    <div class="form-row">
-      <div class="field" style="max-width: 200px">
+    <div class="task-fields">
+      <div class="field">
         <label for="task-to">New task for</label>
         <select id="task-to" name="to">
           <option value="you">you</option>
           {% for agent in agents %}<option value="{{ agent.name }}">{{ agent.name }}</option>{% endfor %}
         </select>
       </div>
-      <div class="field" style="flex: 1">
+      <div class="field">
         <label for="task-title">Title</label>
         <input type="text" id="task-title" name="title" required>
       </div>
-      <div class="field" style="flex: 2">
+      <div class="field">
         <label for="task-details">Details</label>
         <input type="text" id="task-details" name="details">
       </div>
-      <button class="btn primary" type="submit">Add task</button>
+      <button class="btn {% if has_model and has_agents %}primary{% else %}secondary{% endif %}" type="submit">Add task</button>
     </div>
   </form>
 </div>
@@ -56,7 +56,7 @@
     </div>
   </section>
   <section class="lane" aria-labelledby="lane-working-h">
-    <h2 id="lane-working-h">Working</h2>
+    <h2 id="lane-working-h"><span class="dot working-dot" aria-hidden="true"></span>Working</h2>
     <div id="working-cards" hx-get="/partials/board/working" hx-trigger="sse:change throttle:1s">
       {% include "partials/working.html" %}
     </div>

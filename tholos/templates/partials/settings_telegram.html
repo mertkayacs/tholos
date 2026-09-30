@@ -1,12 +1,12 @@
 <p class="muted">Optional. Tholos messages you when an agent needs a decision, fails, or hands you a task, and you can answer or approve from chat.</p>
 {% if test_result %}
-<p role="status" style="color: {% if test_result.ok %}var(--done){% else %}var(--danger){% endif %}">
+<p role="status" class="{% if test_result.ok %}success{% else %}error{% endif %}">
   {{ test_result.message }}</p>
 {% endif %}
 <form hx-post="/settings/telegram" hx-target="#telegram-wrap" method="post">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <div class="form-row">
-    <div class="field" style="flex: 1">
+    <div class="field grow">
       <label for="tg-token">Bot token</label>
       <input type="password" id="tg-token" name="bot_token" autocomplete="off"
              {% if telegram.configured %}placeholder="Saved ({{ telegram.token_masked }})"{% endif %}>
@@ -18,8 +18,8 @@
              inputmode="numeric">
     </div>
   </div>
-  <div class="actions" style="display: flex; gap: 8px">
-    <button class="btn primary" type="submit">Save</button>
+  <div class="actions">
+    <button class="btn secondary" type="submit">Save</button>
     <button class="btn secondary" type="submit" form="tg-test">Send test message</button>
   </div>
 </form>

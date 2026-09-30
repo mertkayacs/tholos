@@ -1,7 +1,7 @@
 {
   "id": "approval-004",
   "category": "approval",
-  "template": "b-approval-ok",
+  "template": "b-approval-note-ok",
   "agent": "Scribe",
   "workspace": {
     "agents": [

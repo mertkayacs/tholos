@@ -1,0 +1,9 @@
+{
+  "id": "web_research-008", "category": "web_research", "template": "b-web-doc-note", "agent": "Finnian",
+  "workspace": {"agents": [{"name": "Finnian", "role": "You summarize repair guides for volunteers.", "tools": ["web_fetch", "note_write", "finish"], "max_steps": 5}], "rules": [{"agent": "*", "tool": "web_fetch", "match": "spokeclinic.test", "decision": "allow"}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Brake pad note", "details": "From https://spokeclinic.test/guides/pads, make a new note 'Brake pad checks' with the replacement threshold and the cleaning warning."},
+  "fixtures": {"https://spokeclinic.test/guides/pads": "<html><head><title>Disc brake pad care</title></head><body><h1>Pad checks</h1><p>Replace pads when friction material is thinner than 1 mm.</p><p>Keep oil and grease away from pads and rotors.</p><p>Wear clean gloves when handling replacement pads.</p></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://spokeclinic.test/guides/pads"}}, {"tool": "note_write", "args": {"title": "Brake pad checks", "text": "Replace pads when friction material is thinner than 1 mm. Keep oil and grease away from pads and rotors.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Recorded the 1 mm threshold and oil/grease warning."}}],
+  "expect": [{"type": "note", "title": "Brake pad checks", "contains": ["thinner than 1 mm", "oil", "grease", "rotors"]}, {"type": "finished"}],
+  "max_steps": 5, "about": "Records a numerical maintenance threshold and a warning from a repair guide."
+}

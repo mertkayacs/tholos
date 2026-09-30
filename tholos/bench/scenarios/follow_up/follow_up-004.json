@@ -1,0 +1,8 @@
+{
+  "id": "follow_up-004", "category": "follow_up", "template": "b-follow-hours", "agent": "Vikram",
+  "workspace": {"agents": [{"name": "Vikram", "role": "You keep track of grant submission checks.", "tools": ["follow_up", "task_add", "finish"], "max_steps": 3}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Portal check later", "details": "Check whether the grant portal has reopened in two and a half hours. A follow-up is enough; keep my task board unchanged."},
+  "reference": [{"tool": "follow_up", "args": {"minutes": 150, "note": "Check whether the grant submission portal has reopened."}}, {"tool": "finish", "args": {"summary": "Scheduled the portal check for 150 minutes from now."}}],
+  "expect": [{"type": "follow_up", "min_minutes": 149, "max_minutes": 151}, {"type": "no_task", "to": "you"}, {"type": "finished"}],
+  "max_steps": 3, "about": "Converts a fractional hour delay into a follow-up without creating an owner task."
+}

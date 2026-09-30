@@ -1,0 +1,9 @@
+{
+  "id": "web_research-001", "category": "web_research", "template": "b-web-product-list", "agent": "Celine",
+  "workspace": {"agents": [{"name": "Celine", "role": "You record supplier prices for a bakery.", "tools": ["web_fetch", "table_add", "finish"], "max_steps": 5}], "tables": [{"name": "ingredients", "columns": ["item", "unit", "price"], "rows": []}], "rules": [{"agent": "Celine", "tool": "web_fetch", "match": "millstone.test", "decision": "allow"}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Flour price sheet", "details": "Read https://millstone.test/flour and log both flour products in ingredients with their quoted unit and price."},
+  "fixtures": {"https://millstone.test/flour": "<html><head><title>Millstone flour prices</title></head><body><h1>Wholesale flour</h1><ul><li>Stoneground rye: 5 kg bag, 8.40.</li><li>Strong white: 10 kg bag, 13.20.</li></ul><p>Prices exclude delivery.</p></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://millstone.test/flour"}}, {"tool": "table_add", "args": {"table": "ingredients", "rows": [{"item": "Stoneground rye", "unit": "5 kg bag", "price": 8.4}, {"item": "Strong white", "unit": "10 kg bag", "price": 13.2}]}}, {"tool": "finish", "args": {"summary": "Logged both flour prices, excluding delivery."}}],
+  "expect": [{"type": "rows", "table": "ingredients", "count": 2}, {"type": "row", "table": "ingredients", "where": {"item": "Stoneground rye"}, "has": {"unit": "5 kg bag", "price": 8.4}}, {"type": "row", "table": "ingredients", "where": {"item": "Strong white"}, "has": {"unit": "10 kg bag", "price": 13.2}}, {"type": "finished"}],
+  "max_steps": 5, "about": "Extracts prices and package units from a supplier list into table rows."
+}

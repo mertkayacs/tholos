@@ -11,8 +11,8 @@
 {% endif %}
 {% for agent in agents %}
 <div class="card">
-  <div class="page-head" style="margin-bottom: 8px">
-    <h2 style="font-size: 18px"><a href="/agents/{{ agent.name|urlquote }}">{{ agent.name }}</a></h2>
+  <div class="page-head page-head-compact">
+    <h2 class="heading-small"><a href="/agents/{{ agent.name|urlquote }}">{{ agent.name }}</a></h2>
     {% if agent.status == "working" %}
     <span class="badge working"><span class="dot" aria-hidden="true"></span>Working</span>
     {% elif agent.status == "waiting" %}

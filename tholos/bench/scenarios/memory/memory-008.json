@@ -1,0 +1,8 @@
+{
+  "id": "memory-008", "category": "memory", "template": "b-memory-save-preference", "agent": "Greer",
+  "workspace": {"agents": [{"name": "Greer", "role": "You remember review conventions for a knitting club.", "tools": ["remember", "finish"], "max_steps": 3}]},
+  "trigger": {"kind": "message", "text": "remember this: yarn quantities should be in metres, even when the shop lists yards."},
+  "reference": [{"tool": "remember", "args": {"fact": "Report yarn quantities in metres, converting shop listings in yards when needed."}}, {"tool": "finish", "args": {"summary": "Saved metres as your preferred yarn length unit."}}],
+  "expect": [{"type": "memory", "agent": "Greer", "contains": "metres"}, {"type": "memory", "agent": "Greer", "contains": "yards"}, {"type": "finished"}],
+  "max_steps": 3, "about": "Records a unit preference stated in a terse owner message."
+}

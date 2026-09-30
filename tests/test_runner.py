@@ -67,7 +67,7 @@ def test_table_work_and_handoff(db, setup):
     run = drive(db, model)
     assert run["id"] == rid and run["status"] == "done" and len(run["steps"]) == 6
     assert run["tokens_in"] == 60 and run["tokens_out"] == 24
-    assert len(run["messages"]) == 14
+    assert len(run["messages"]) == 13 and run["messages"][-1]["role"] == "assistant"
     assert w.get_table(db, "leads")["rows"][0]["data"]["score"] == 5
     assert w.recent_changes(db, "row")[0]["run_id"] == rid
     writer = w.get_agent(db, "Writer")
@@ -101,7 +101,9 @@ def test_ask_answer_resume(db, setup):
         assert '"answer":"March"' in body["messages"][-1]["content"]
         return reply("finish", summary="March selected")
 
-    assert drive(db, scripted(db, [finish]))["status"] == "done"
+    completed = drive(db, scripted(db, [finish]))
+    assert completed["status"] == "done" and len(completed["messages"]) == 5
+    assert completed["messages"][-1]["role"] == "assistant"
 
 
 @pytest.mark.parametrize("approve,always", [(True, False), (False, False), (True, True)])
@@ -408,3 +410,38 @@ def test_worker_stop_requeues_inflight(db, setup):
 
     asyncio.run(exercise())
     assert w.get_run(db, rid)["fence"] == 2 and not w.get_run(db, rid)["steps"]
+
+
+def test_finish_ends_with_assistant_and_retains_result(db, setup):
+    tid = w.add_task(db, "Check sources", to="Scout")
+    run = drive(db, scripted(db, [reply("finish", summary="Ready")]))
+    assert run["status"] == "done" and run["task_id"] == tid
+    assert len(run["messages"]) == 3 and run["messages"][-1]["role"] == "assistant"
+    assert json.loads(run["messages"][-1]["content"])["tool"] == "finish"
+    assert run["steps"][-1]["result"] == {"summary": "Ready"}
+    assert w.list_tasks(db, "done")[0]["result"] == "Ready"
+
+
+def test_approved_finish_has_no_tool_response(db, setup):
+    w.add_rule(db, "finish", "ask")
+    rid = w.queue_run(db, setup[0], "Check", "message")
+    waiting = drive(db, scripted(db, [reply("finish", summary="Ready")]))
+    assert waiting["status"] == "waiting" and len(waiting["messages"]) == 3
+    runner.decide(db, w.list_waiting(db)[0]["id"], True)
+    completed = w.get_run(db, rid)
+    assert completed["status"] == "done" and completed["messages"] == waiting["messages"]
+    assert completed["steps"][-1]["result"] == {"summary": "Ready"}
+
+
+def test_denied_finish_keeps_feedback_before_successful_finish(db, setup):
+    rule_id = w.add_rule(db, "finish", "ask")
+    rid = w.queue_run(db, setup[0], "Check", "message")
+    drive(db, scripted(db, [reply("finish", summary="Ready")]))
+    runner.decide(db, w.list_waiting(db)[0]["id"], False)
+    queued = w.get_run(db, rid)
+    assert queued["status"] == "queued" and queued["messages"][-1]["role"] == "user"
+    assert "the owner denied this" in queued["messages"][-1]["content"]
+    w.delete_rule(db, rule_id)
+    completed = drive(db, scripted(db, [reply("finish", summary="Revised")]))
+    assert completed["status"] == "done" and len(completed["messages"]) == 5
+    assert completed["messages"][-1]["role"] == "assistant"

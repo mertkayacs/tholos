@@ -1,0 +1,16 @@
+{
+  "id": "ask-003", "category": "ask", "template": "b-ask-target", "agent": "Yvette",
+  "workspace": {
+    "agents": [{"name": "Yvette", "role": "You record seed purchases for a garden club.", "tools": ["ask", "table_add", "finish"], "max_steps": 5}],
+    "tables": [{"name": "seed_orders", "columns": ["variety", "packets", "supplier"], "rows": []}]
+  },
+  "trigger": {"kind": "message", "text": "order 4 packets of kale from Mossbank Seeds, but ask which variety first pls"},
+  "respond": {"answer": "Nero di Toscana."},
+  "reference": [
+    {"tool": "ask", "args": {"question": "Which kale variety should I record?"}},
+    {"tool": "table_add", "args": {"table": "seed_orders", "rows": [{"variety": "Nero di Toscana", "packets": 4, "supplier": "Mossbank Seeds"}]}},
+    {"tool": "finish", "args": {"summary": "Recorded four packets of Nero di Toscana from Mossbank Seeds."}}
+  ],
+  "expect": [{"type": "asked"}, {"type": "rows", "table": "seed_orders", "count": 1}, {"type": "row", "table": "seed_orders", "where": {"variety": "Nero di Toscana"}, "has": {"packets": 4, "supplier": "Mossbank Seeds"}}, {"type": "finished"}],
+  "max_steps": 5, "about": "Asks for a missing seed variety before adding an order."
+}

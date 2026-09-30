@@ -1,0 +1,9 @@
+{
+  "id": "web_research-012", "category": "web_research", "template": "b-web-update-existing", "agent": "Nerea",
+  "workspace": {"agents": [{"name": "Nerea", "role": "You update a bookshop's supplier stock from product pages.", "tools": ["table_read", "web_fetch", "table_update", "finish"], "max_steps": 6}], "tables": [{"name": "supplier_stock", "columns": ["code", "title", "available"], "rows": [{"code": "BK-740", "title": "Birds of the Salt Marsh", "available": 5}, {"code": "BK-741", "title": "Coastal Footpaths", "available": 11}]}], "rules": [{"agent": "*", "tool": "web_fetch", "match": "pageharbor.test", "decision": "allow"}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Refresh BK-740", "details": "Use https://pageharbor.test/catalog/BK-740 to update BK-740's supplier availability. Leave BK-741 unchanged."},
+  "fixtures": {"https://pageharbor.test/catalog/BK-740": "<html><head><title>Birds of the Salt Marsh</title></head><body><h1>BK-740: Birds of the Salt Marsh</h1><p>Available from warehouse: 17 copies.</p><p>Dispatch within two working days.</p></body></html>"},
+  "reference": [{"tool": "table_read", "args": {"table": "supplier_stock", "query": "code:BK-740", "limit": null}}, {"tool": "web_fetch", "args": {"url": "https://pageharbor.test/catalog/BK-740"}}, {"tool": "table_update", "args": {"table": "supplier_stock", "row": 1, "values": {"code": null, "title": null, "available": 17}}}, {"tool": "finish", "args": {"summary": "Updated BK-740's warehouse availability to 17 copies."}}],
+  "expect": [{"type": "row", "table": "supplier_stock", "where": {"code": "BK-740"}, "has": {"available": 17}}, {"type": "row", "table": "supplier_stock", "where": {"code": "BK-741"}, "has": {"available": 11}}, {"type": "rows", "table": "supplier_stock", "count": 2}, {"type": "finished"}],
+  "max_steps": 6, "about": "Updates a specific existing row using facts from its supplier product page."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "web_research-013", "category": "web_research", "template": "b-web-update-existing", "agent": "Ludovic",
+  "workspace": {"agents": [{"name": "Ludovic", "role": "You maintain public museum visitor information.", "tools": ["web_fetch", "note_read", "note_write", "finish"], "max_steps": 6}], "notes": [{"title": "Museum access", "body": "Admission: 6. Lift is unavailable."}], "rules": [{"agent": "*", "tool": "web_fetch", "match": "clockmuseum.test", "decision": "allow"}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Refresh access note", "details": "Replace Museum access with the current admission fee and lift status from https://clockmuseum.test/visit."},
+  "fixtures": {"https://clockmuseum.test/visit": "<html><head><title>Clock Museum visit</title></head><body><h1>Visitor information</h1><p>Admission is 7.50 for adults.</p><p>The lift is operating and serves all three floors.</p><p>Children under 12 enter free.</p></body></html>"},
+  "reference": [{"tool": "note_read", "args": {"title": "Museum access"}}, {"tool": "web_fetch", "args": {"url": "https://clockmuseum.test/visit"}}, {"tool": "note_write", "args": {"title": "Museum access", "text": "Adult admission: 7.50. The lift is operating and serves all three floors.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Refreshed the fee and lift information."}}],
+  "expect": [{"type": "note", "title": "Museum access", "contains": ["7.50", "lift is operating", "three floors"], "not_contains": ["unavailable"]}, {"type": "finished"}],
+  "max_steps": 6, "about": "Replaces stale visitor information with current fixture facts after reading the note."
+}

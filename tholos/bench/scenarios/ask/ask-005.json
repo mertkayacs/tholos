@@ -1,0 +1,9 @@
+{
+  "id": "ask-005", "category": "ask", "template": "b-ask-quantity", "agent": "Noemi",
+  "workspace": {"agents": [{"name": "Noemi", "role": "You record household budget changes.", "tools": ["ask", "table_read", "table_update", "finish"], "max_steps": 6}], "tables": [{"name": "allowances", "columns": ["category", "limit"], "rows": [{"category": "Groceries", "limit": 320}, {"category": "Transport", "limit": 90}, {"category": "Books", "limit": 40}]}]},
+  "trigger": {"kind": "message", "text": "Increase the grocery limit for October. Check the new amount with me before changing anything."},
+  "respond": {"answer": "Set the limit to 375 total."},
+  "reference": [{"tool": "ask", "args": {"question": "What should the new grocery limit be?"}}, {"tool": "table_read", "args": {"table": "allowances", "query": "category:Groceries", "limit": null}}, {"tool": "table_update", "args": {"table": "allowances", "row": 1, "values": {"category": null, "limit": 375}}}, {"tool": "finish", "args": {"summary": "Set the grocery limit to 375."}}],
+  "expect": [{"type": "asked"}, {"type": "row", "table": "allowances", "where": {"category": "Groceries"}, "has": {"limit": 375}}, {"type": "row", "table": "allowances", "where": {"category": "Transport"}, "has": {"limit": 90}}, {"type": "finished"}],
+  "max_steps": 6, "about": "Distinguishes a new budget total from an unspecified increase."
+}

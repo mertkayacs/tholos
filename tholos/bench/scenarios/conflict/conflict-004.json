@@ -1,0 +1,9 @@
+{
+  "id": "conflict-004", "category": "conflict", "template": "b-conflict-row-recalculate", "agent": "Briony",
+  "workspace": {"agents": [{"name": "Briony", "role": "You record stock withdrawals at a hardware stall.", "tools": ["table_read", "table_update", "finish"], "max_steps": 8}], "tables": [{"name": "fasteners", "columns": ["part", "boxes", "bin"], "rows": [{"part": "M6 washers", "boxes": 12, "bin": "W2"}, {"part": "M8 nuts", "boxes": 9, "bin": "N1"}]}]},
+  "trigger": {"kind": "message", "text": "Remove 3 boxes of M6 washers from the latest stock count. Someone is correcting yesterday's count, so refresh if your write conflicts."},
+  "interfere": {"after_tool": "table_read", "table": "fasteners", "row_match": {"part": "M6 washers"}, "set": {"boxes": 10}},
+  "reference": [{"tool": "table_read", "args": {"table": "fasteners", "query": null, "limit": null}}, {"tool": "table_update", "args": {"table": "fasteners", "row": 1, "values": {"part": null, "boxes": 9, "bin": null}}}, {"tool": "table_read", "args": {"table": "fasteners", "query": null, "limit": null}}, {"tool": "table_update", "args": {"table": "fasteners", "row": 1, "values": {"part": null, "boxes": 7, "bin": null}}}, {"tool": "finish", "args": {"summary": "Recorded the withdrawal against the corrected count; seven boxes remain."}}],
+  "expect": [{"type": "row", "table": "fasteners", "where": {"part": "M6 washers"}, "has": {"boxes": 7, "bin": "W2"}}, {"type": "row", "table": "fasteners", "where": {"part": "M8 nuts"}, "has": {"boxes": 9}}, {"type": "finished"}],
+  "max_steps": 8, "about": "Retries a stock subtraction using the revised count after a conflict."
+}

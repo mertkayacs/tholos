@@ -2,7 +2,7 @@
 <p class="muted" role="status">No local model server answered. Start Ollama with `ollama serve` or llama-server on port 8080, then detect again.</p>
 {% endif %}
 {% for item in found %}
-<div class="card" style="background: var(--sunken)">
+<div class="card sunken">
   <p class="mono small">{{ item.base_url }} · {{ item.model }}</p>
   <form hx-post="/settings/models" hx-target="#models-wrap" method="post" class="form-row">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -11,7 +11,7 @@
     <input type="hidden" name="json_mode" value="schema">
     <input type="hidden" name="temperature" value="0.2">
     <input type="hidden" name="max_tokens" value="512">
-    <div class="field" style="margin-bottom: 0">
+    <div class="field field-flush">
       <label for="detect-name-{{ loop.index }}">Name</label>
       <input type="text" id="detect-name-{{ loop.index }}" name="name" value="{{ item.model }}" required>
     </div>

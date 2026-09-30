@@ -1,0 +1,8 @@
+{
+  "id": "follow_up-006", "category": "follow_up", "template": "b-follow-days", "agent": "Malik",
+  "workspace": {"agents": [{"name": "Malik", "role": "You check community venue bookings.", "tools": ["follow_up", "finish"], "max_steps": 3}]},
+  "trigger": {"kind": "message", "text": "check the hall deposit again in 24 hrs please"},
+  "reference": [{"tool": "follow_up", "args": {"minutes": 1440, "note": "Check whether the community hall deposit has been received."}}, {"tool": "finish", "args": {"summary": "Scheduled the hall deposit check for 24 hours from now."}}],
+  "expect": [{"type": "follow_up", "min_minutes": 1439, "max_minutes": 1441}, {"type": "finished"}],
+  "max_steps": 3, "about": "Schedules a one-day follow-up from an abbreviated owner message."
+}

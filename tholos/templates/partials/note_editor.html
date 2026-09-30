@@ -12,7 +12,7 @@
   <input type="hidden" name="expected_version" value="{{ note.version }}">
   <div class="field">
     <label for="note-body">Body (Markdown)</label>
-    <textarea id="note-body" name="text" rows="12" style="min-height: 240px">{{ note.body }}</textarea>
+    <textarea class="note-editor" id="note-body" name="text" rows="12">{{ note.body }}</textarea>
   </div>
   <button class="btn primary" type="submit">Save</button>
 </form>

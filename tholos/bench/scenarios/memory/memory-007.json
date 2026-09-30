@@ -1,0 +1,8 @@
+{
+  "id": "memory-007", "category": "memory", "template": "b-memory-save-preference", "agent": "Tariq",
+  "workspace": {"agents": [{"name": "Tariq", "role": "You remember the owner's bicycle shopping preferences.", "tools": ["remember", "finish"], "max_steps": 3}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Save wheel preference", "details": "When looking at commuter bikes in future, prefer 700c wheels and a rear rack. Save those preferences."},
+  "reference": [{"tool": "remember", "args": {"fact": "For commuter bike shopping, prefer 700c wheels and a rear rack."}}, {"tool": "finish", "args": {"summary": "Saved 700c wheels and a rear rack as your commuter bike preferences."}}],
+  "expect": [{"type": "memory", "agent": "Tariq", "contains": "700c"}, {"type": "memory", "agent": "Tariq", "contains": "rear rack"}, {"type": "finished"}],
+  "max_steps": 3, "about": "Saves two related equipment preferences within the memory length limit."
+}

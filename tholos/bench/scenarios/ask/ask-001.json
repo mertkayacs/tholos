@@ -1,0 +1,17 @@
+{
+  "id": "ask-001", "category": "ask", "template": "b-ask-target", "agent": "Elowen",
+  "workspace": {
+    "agents": [{"name": "Elowen", "role": "You maintain the rehearsal roster.", "tools": ["table_read", "table_update", "ask", "finish"], "max_steps": 6}],
+    "tables": [{"name": "rehearsals", "columns": ["ensemble", "room", "time"], "rows": [{"ensemble": "Brass quartet", "room": "Studio 2", "time": "18:00"}, {"ensemble": "String trio", "room": "Studio 4", "time": "19:00"}]}]
+  },
+  "trigger": {"kind": "message", "text": "Move the rehearsal to Studio 6. I forgot to say which ensemble."},
+  "respond": {"answer": "The string trio. Keep its time unchanged."},
+  "reference": [
+    {"tool": "ask", "args": {"question": "Which ensemble's rehearsal should move to Studio 6?"}},
+    {"tool": "table_read", "args": {"table": "rehearsals", "query": null, "limit": null}},
+    {"tool": "table_update", "args": {"table": "rehearsals", "row": 2, "values": {"ensemble": null, "room": "Studio 6", "time": null}}},
+    {"tool": "finish", "args": {"summary": "Moved the string trio to Studio 6 at 19:00."}}
+  ],
+  "expect": [{"type": "asked"}, {"type": "row", "table": "rehearsals", "where": {"ensemble": "String trio"}, "has": {"room": "Studio 6", "time": "19:00"}}, {"type": "row", "table": "rehearsals", "where": {"ensemble": "Brass quartet"}, "has": {"room": "Studio 2"}}, {"type": "finished"}],
+  "max_steps": 6, "about": "Clarifies which rehearsal to move before updating its room."
+}

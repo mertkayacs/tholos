@@ -1,0 +1,9 @@
+{
+  "id": "ask-004", "category": "ask", "template": "b-ask-quantity", "agent": "Bastian",
+  "workspace": {"agents": [{"name": "Bastian", "role": "You maintain a print shop's paper orders.", "tools": ["ask", "table_add", "table_read", "finish"], "max_steps": 5}], "tables": [{"name": "paper_orders", "columns": ["stock", "reams", "delivery"], "rows": [{"stock": "A3 cream", "reams": 2, "delivery": "2026-10-01"}]}]},
+  "trigger": {"kind": "task", "from": "you", "title": "More letterhead stock", "details": "Record another order of A4 ivory paper for delivery on 2026-10-06. I haven't given you the number of reams."},
+  "respond": {"answer": "Six reams."},
+  "reference": [{"tool": "ask", "args": {"question": "How many reams of A4 ivory paper should I record?"}}, {"tool": "table_add", "args": {"table": "paper_orders", "rows": [{"stock": "A4 ivory", "reams": 6, "delivery": "2026-10-06"}]}}, {"tool": "finish", "args": {"summary": "Recorded six reams of A4 ivory for October 6."}}],
+  "expect": [{"type": "asked"}, {"type": "rows", "table": "paper_orders", "count": 2}, {"type": "row", "table": "paper_orders", "where": {"stock": "A4 ivory"}, "has": {"reams": 6, "delivery": "2026-10-06"}}, {"type": "finished"}],
+  "max_steps": 5, "about": "Requests the missing quantity for a paper purchase."
+}

@@ -1,7 +1,7 @@
 {% if not teams %}<p class="muted">No starter teams installed.</p>{% endif %}
 {% for id, name in teams %}
-<div class="form-row" style="align-items: center; margin-bottom: 8px">
-  <p style="margin: 0; flex: 1"><strong>{{ name }}</strong></p>
+<div class="form-row list-row">
+  <p class="flush grow"><strong>{{ name }}</strong></p>
   <form hx-post="/settings/teams" hx-target="#teams-wrap" method="post" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="name" value="{{ id }}">

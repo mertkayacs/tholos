@@ -1,0 +1,8 @@
+{
+  "id": "memory-005", "category": "memory", "template": "b-memory-routing", "agent": "Soren",
+  "workspace": {"agents": [{"name": "Soren", "role": "You write reminders for seed swaps.", "tools": ["note_write", "finish"], "max_steps": 4}], "memories": [{"agent": "Soren", "text": "Use ISO dates (YYYY-MM-DD) and 24-hour times in event notes."}]},
+  "trigger": {"kind": "message", "text": "Make a new note 'Seed swap arrival': arrive October 18, 2026 at half past two in the afternoon, Oak Hall. Use my usual date and time style."},
+  "reference": [{"tool": "note_write", "args": {"title": "Seed swap arrival", "text": "Arrive at Oak Hall on 2026-10-18 at 14:30.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Recorded the arrival in your saved ISO and 24-hour style."}}],
+  "expect": [{"type": "note", "title": "Seed swap arrival", "contains": ["2026-10-18", "14:30", "Oak Hall"]}, {"type": "finished"}],
+  "max_steps": 4, "about": "Applies remembered date and time formatting to an event note."
+}

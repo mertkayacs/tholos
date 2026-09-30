@@ -1,0 +1,9 @@
+{
+  "id": "conflict-008", "category": "conflict", "template": "b-conflict-note-checklist", "agent": "Dario",
+  "workspace": {"agents": [{"name": "Dario", "role": "You maintain a stall-opening checklist.", "tools": ["note_read", "note_write", "finish"], "max_steps": 8}], "notes": [{"title": "Stall opening", "body": "[ ] Count float\n[ ] Put out price cards"}]},
+  "trigger": {"kind": "message", "text": "Tick Count float in Stall opening. Keep all the other checklist entries, even if someone adds one."},
+  "interfere": {"after_tool": "note_read", "note": "Stall opening", "append": "\n[ ] Check canopy ties"},
+  "reference": [{"tool": "note_read", "args": {"title": "Stall opening"}}, {"tool": "note_write", "args": {"title": "Stall opening", "text": "[x] Count float\n[ ] Put out price cards", "mode": "replace"}}, {"tool": "note_read", "args": {"title": "Stall opening"}}, {"tool": "note_write", "args": {"title": "Stall opening", "text": "[x] Count float\n[ ] Put out price cards\n[ ] Check canopy ties", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Ticked Count float and kept both remaining opening tasks."}}],
+  "expect": [{"type": "note", "title": "Stall opening", "contains": ["[x] Count float", "[ ] Put out price cards", "[ ] Check canopy ties"]}, {"type": "finished"}],
+  "max_steps": 8, "about": "Marks a checklist item complete after recovering a concurrently appended task."
+}

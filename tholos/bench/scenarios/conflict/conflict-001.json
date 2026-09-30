@@ -1,0 +1,9 @@
+{
+  "id": "conflict-001", "category": "conflict", "template": "b-conflict-row-preserve", "agent": "Keiko",
+  "workspace": {"agents": [{"name": "Keiko", "role": "You update ceramics orders while preserving concurrent edits.", "tools": ["table_read", "table_update", "finish"], "max_steps": 8}], "tables": [{"name": "kiln_orders", "columns": ["batch", "pieces", "stage"], "rows": [{"batch": "K-19", "pieces": 24, "stage": "drying"}, {"batch": "K-20", "pieces": 8, "stage": "glazing"}]}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Queue batch K-19", "details": "Set K-19's stage to firing. Preserve its current piece count and leave K-20 alone."},
+  "interfere": {"after_tool": "table_read", "table": "kiln_orders", "row_match": {"batch": "K-19"}, "set": {"pieces": 21}},
+  "reference": [{"tool": "table_read", "args": {"table": "kiln_orders", "query": "batch:K-19", "limit": null}}, {"tool": "table_update", "args": {"table": "kiln_orders", "row": 1, "values": {"batch": null, "pieces": null, "stage": "firing"}}}, {"tool": "table_read", "args": {"table": "kiln_orders", "query": "batch:K-19", "limit": null}}, {"tool": "table_update", "args": {"table": "kiln_orders", "row": 1, "values": {"batch": null, "pieces": null, "stage": "firing"}}}, {"tool": "finish", "args": {"summary": "Queued K-19 for firing with its revised count of 21 pieces."}}],
+  "expect": [{"type": "row", "table": "kiln_orders", "where": {"batch": "K-19"}, "has": {"pieces": 21, "stage": "firing"}}, {"type": "row", "table": "kiln_orders", "where": {"batch": "K-20"}, "has": {"pieces": 8, "stage": "glazing"}}, {"type": "finished"}],
+  "max_steps": 8, "about": "Recovers from a stale row version and preserves a concurrent quantity correction."
+}

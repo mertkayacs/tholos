@@ -1,0 +1,9 @@
+{
+  "id": "conflict-006", "category": "conflict", "template": "b-conflict-note-revise", "agent": "Emil",
+  "workspace": {"agents": [{"name": "Emil", "role": "You maintain release notes for a small command-line project.", "tools": ["note_read", "note_write", "search", "finish"], "max_steps": 8}], "notes": [{"title": "Release 0.8", "body": "Release date: October 2. Fixes tab completion."}]},
+  "trigger": {"kind": "message", "text": "Change Release 0.8's date to October 5. Keep its fixes and any new release-note entries."},
+  "interfere": {"after_tool": "note_read", "note": "Release 0.8", "append": "\nAdds fish shell support."},
+  "reference": [{"tool": "note_read", "args": {"title": "Release 0.8"}}, {"tool": "note_write", "args": {"title": "Release 0.8", "text": "Release date: October 5. Fixes tab completion.", "mode": "replace"}}, {"tool": "note_read", "args": {"title": "Release 0.8"}}, {"tool": "note_write", "args": {"title": "Release 0.8", "text": "Release date: October 5. Fixes tab completion.\nAdds fish shell support.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Moved the release to October 5 and preserved fish shell support."}}],
+  "expect": [{"type": "note", "title": "Release 0.8", "contains": ["October 5", "tab completion", "fish shell"], "not_contains": ["October 2"]}, {"type": "finished"}],
+  "max_steps": 8, "about": "Preserves a newly appended release feature after a stale note replacement fails."
+}

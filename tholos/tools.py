@@ -1,5 +1,8 @@
+import operator
+import shlex
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal, InvalidOperation
 
 import httpx
 
@@ -49,7 +52,8 @@ SPECS = {
     "finish": _object({"summary": S}),
 }
 DESCRIPTIONS = {
-    "table_read": "table_read(table, query?, limit?): read rows. query filters rows.",
+    "table_read": "table_read(table, query?, limit?): read rows. query: col=value, "
+    "col!=value, col>=n, or words; empty for all rows.",
     "table_create": "table_create(table, columns): create a table.",
     "table_add": "table_add(table, rows): add rows. Use null for empty cells.",
     "table_update": "table_update(table, row, values): update a row you read. null keeps a cell.",
@@ -107,17 +111,102 @@ def compact(result: dict) -> dict:
     return result
 
 
-def _matches(data: dict, query: str | None) -> bool:
-    if not query:
-        return True
-    parts = query.casefold().split()
-    if any(":" in part for part in parts):
-        lower = {key.casefold(): str(value).casefold() for key, value in data.items()}
-        return all(
-            value in lower.get(key, "")
-            for key, value in (part.split(":", 1) for part in parts if ":" in part)
+COMPARE = {
+    "=": operator.eq,
+    "==": operator.eq,
+    ":": operator.eq,
+    "!=": operator.ne,
+    ">": operator.gt,
+    "<": operator.lt,
+    ">=": operator.ge,
+    "<=": operator.le,
+}
+QUERY_HINT = "Use col=value, col!=value, col>=n, or words; empty, *, or all for all rows."
+
+
+def _number(text: str) -> Decimal | None:
+    try:
+        number = Decimal(text)
+        return number if number.is_finite() else None
+    except InvalidOperation:
+        return None
+
+
+def _matches(data: dict, conditions: list[tuple[str | None, str, str]]) -> bool:
+    for column, op, wanted in conditions:
+        value = data[column] if column else " ".join(str(v) for v in data.values())
+        text = str(value).strip().casefold()
+        if op == "~":
+            if wanted not in text:
+                return False
+            continue
+        left, right = _number(text), _number(wanted)
+        if left is not None and right is not None:
+            matched = COMPARE[op](left, right)
+        elif op == ":":
+            matched = wanted in text
+        elif op in {">", "<", ">=", "<="} and (
+            value is None or not text or (left is None) != (right is None)
+        ):
+            matched = False
+        else:
+            matched = COMPARE[op](text, wanted)
+        if not matched:
+            return False
+    return True
+
+
+def _filter(sheet: dict, query: str | None) -> tuple[list[dict], dict]:
+    if not query or query.strip().casefold() in {"", "*", "all"}:
+        return sheet["rows"], {}
+    lexer = shlex.shlex(query, posix=True, punctuation_chars="=!<>:~,&")
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    tokens = list(lexer)
+    ops = set(COMPARE) | {"~"}
+    separators = {",", "and", "&&"}
+    columns = {column.casefold(): column for column in sheet["columns"]}
+    conditions = []
+    ignored = set()
+    hints = []
+    if "," in tokens and not any(token in ops for token in tokens):
+        ignored.update(
+            token.casefold() for token in tokens if token != "," and token.casefold() not in columns
         )
-    return query.casefold() in " ".join(str(value) for value in data.values()).casefold()
+        hints.append("Column list ignored; returning all rows and columns.")
+    else:
+        i = 0
+        while i < len(tokens):
+            if tokens[i].casefold() in separators:
+                i += 1
+                continue
+            column, op = None, "~"
+            if i + 1 < len(tokens) and tokens[i + 1] in ops:
+                column, op = tokens[i].casefold(), tokens[i + 1]
+                i += 2
+            words = []
+            while i < len(tokens):
+                if (words and tokens[i].casefold() in separators) or (
+                    i + 1 < len(tokens) and tokens[i + 1] in ops
+                ):
+                    break
+                words.append(tokens[i])
+                i += 1
+            if column is not None and column not in columns:
+                ignored.add(column)
+            else:
+                conditions.append((columns.get(column), op, " ".join(words).strip().casefold()))
+    rows = [row for row in sheet["rows"] if _matches(row["data"], conditions)]
+    diagnostics = {}
+    if ignored:
+        diagnostics["ignored_columns"] = sorted(ignored)
+        hints.append("Ignored unknown columns: " + ", ".join(sorted(ignored)) + ".")
+    if not rows and sheet["rows"]:
+        diagnostics["table_rows"] = len(sheet["rows"])
+        hints.append(QUERY_HINT)
+    if hints:
+        diagnostics["hint"] = " ".join(" ".join(hints).split())
+    return rows, diagnostics
 
 
 def run_tool(db: w.DB, run: dict, agent: dict, name: str, args: dict) -> dict:
@@ -134,7 +223,7 @@ def run_tool(db: w.DB, run: dict, agent: dict, name: str, args: dict) -> dict:
             limit = args["limit"] if args["limit"] is not None else 10
             if type(limit) is not int or not 1 <= limit <= 50:
                 raise ValueError("limit must be between 1 and 50")
-            rows = [row for row in sheet["rows"] if _matches(row["data"], args["query"])]
+            rows, diagnostics = _filter(sheet, args["query"])
             result = compact(
                 {
                     "table": sheet["name"],
@@ -143,6 +232,7 @@ def run_tool(db: w.DB, run: dict, agent: dict, name: str, args: dict) -> dict:
                     "rows": [
                         {"row": r["id"], "version": r["version"], **r["data"]} for r in rows[:limit]
                     ],
+                    **diagnostics,
                 }
             )
             for row in result.get("rows", []):

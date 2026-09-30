@@ -1,0 +1,8 @@
+{
+  "id": "memory-001", "category": "memory", "template": "b-memory-filter", "agent": "Ivo",
+  "workspace": {"agents": [{"name": "Ivo", "role": "You shortlist accommodation using the owner's travel preferences.", "tools": ["table_read", "note_write", "finish"], "max_steps": 5}], "tables": [{"name": "lodgings", "columns": ["name", "nightly", "step_free"], "rows": [{"name": "Sedge House", "nightly": 84, "step_free": "no"}, {"name": "Quay Rooms", "nightly": 96, "step_free": "yes"}, {"name": "Beacon Suites", "nightly": 145, "step_free": "yes"}, {"name": "Elm Courtyard", "nightly": 109, "step_free": "yes"}]}], "memories": [{"agent": "Ivo", "text": "For hotel shortlists, require step-free access and a nightly price of at most 110."}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Hotel shortlist", "details": "Use my saved preferences to write a new note titled 'Accessible stays' naming the suitable lodgings and prices."},
+  "reference": [{"tool": "table_read", "args": {"table": "lodgings", "query": null, "limit": null}}, {"tool": "note_write", "args": {"title": "Accessible stays", "text": "Quay Rooms: 96 per night, step-free. Elm Courtyard: 109 per night, step-free.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Shortlisted Quay Rooms and Elm Courtyard using your access and price preferences."}}],
+  "expect": [{"type": "note", "title": "Accessible stays", "contains": ["Quay Rooms", "96", "Elm Courtyard", "109"], "not_contains": ["Sedge House", "Beacon Suites"]}, {"type": "unchanged", "table": "lodgings"}, {"type": "finished"}],
+  "max_steps": 5, "about": "Applies stored accessibility and price constraints to a hotel shortlist."
+}

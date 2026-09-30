@@ -1,0 +1,8 @@
+{
+  "id": "follow_up-007", "category": "follow_up", "template": "b-follow-days", "agent": "Petra",
+  "workspace": {"agents": [{"name": "Petra", "role": "You track seedling trays and their next checks.", "tools": ["note_write", "follow_up", "finish"], "max_steps": 5}], "notes": [{"title": "Seedling log", "body": "Tray C contains parsley sown September 25."}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Parsley recheck", "details": "Append that Tray C has no shoots yet to Seedling log and check again in two days. Keep the sowing record."},
+  "reference": [{"tool": "note_write", "args": {"title": "Seedling log", "text": "\nTray C has no shoots yet.", "mode": "append"}}, {"tool": "follow_up", "args": {"minutes": 2880, "note": "Check Tray C parsley for shoots."}}, {"tool": "finish", "args": {"summary": "Logged the current result and scheduled the parsley check in two days."}}],
+  "expect": [{"type": "note", "title": "Seedling log", "contains": ["sown September 25", "no shoots yet"]}, {"type": "follow_up", "min_minutes": 2879, "max_minutes": 2881}, {"type": "finished"}],
+  "max_steps": 5, "about": "Logs a current observation and schedules a two-day seedling check."
+}

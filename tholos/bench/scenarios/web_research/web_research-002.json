@@ -1,0 +1,9 @@
+{
+  "id": "web_research-002", "category": "web_research", "template": "b-web-product-list", "agent": "Benoit",
+  "workspace": {"agents": [{"name": "Benoit", "role": "You collect tool prices below a stated budget.", "tools": ["web_fetch", "table_add", "finish"], "max_steps": 5}], "tables": [{"name": "affordable_tools", "columns": ["tool", "price"], "rows": []}], "rules": [{"agent": "*", "tool": "web_fetch", "match": "workbench.test", "decision": "allow"}]},
+  "trigger": {"kind": "message", "text": "From https://workbench.test/hand-tools, log the tools priced at 20 or less in affordable_tools."},
+  "fixtures": {"https://workbench.test/hand-tools": "<html><head><title>Workbench hand tools</title></head><body><h1>Tool shelf</h1><p>Combination square: 18.50.</p><p>Block plane: 34.00.</p><p>Marking gauge: 20.00.</p><p>Bench chisel: 12.75.</p></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://workbench.test/hand-tools"}}, {"tool": "table_add", "args": {"table": "affordable_tools", "rows": [{"tool": "Combination square", "price": 18.5}, {"tool": "Marking gauge", "price": 20}, {"tool": "Bench chisel", "price": 12.75}]}}, {"tool": "finish", "args": {"summary": "Recorded the three tools at or below 20."}}],
+  "expect": [{"type": "rows", "table": "affordable_tools", "count": 3}, {"type": "row", "table": "affordable_tools", "where": {"tool": "Marking gauge"}, "has": {"price": 20}}, {"type": "row", "table": "affordable_tools", "where": {"tool": "Combination square"}, "has": {"price": 18.5}}, {"type": "row", "table": "affordable_tools", "where": {"tool": "Bench chisel"}, "has": {"price": 12.75}}, {"type": "finished"}],
+  "max_steps": 5, "about": "Filters a fixture product list by price including the budget boundary."
+}

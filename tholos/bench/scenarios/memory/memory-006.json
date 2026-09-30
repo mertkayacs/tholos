@@ -1,0 +1,8 @@
+{
+  "id": "memory-006", "category": "memory", "template": "b-memory-save-preference", "agent": "Pilar",
+  "workspace": {"agents": [{"name": "Pilar", "role": "You remember practical preferences for school events.", "tools": ["remember", "note_write", "finish"], "max_steps": 4}]},
+  "trigger": {"kind": "message", "text": "For future school catering requests, always ask for nut-free food. Remember that for me."},
+  "reference": [{"tool": "remember", "args": {"fact": "For school catering requests, ask for nut-free food."}}, {"tool": "finish", "args": {"summary": "Saved your nut-free school catering preference."}}],
+  "expect": [{"type": "memory", "agent": "Pilar", "contains": "nut-free"}, {"type": "not_called", "tool": "note_write"}, {"type": "finished"}],
+  "max_steps": 4, "about": "Stores a stated catering preference as an agent memory."
+}

@@ -36,8 +36,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf }}">
             <input type="hidden" name="expected_version" value="{{ row.version }}">
             <input type="hidden" name="column" value="{{ column }}">
-            <input class="cell" name="value" value="{{ row.data[column] }}"
-                   aria-label="{{ column }}, row {{ loop.index }}"{% if column in totals %} style="text-align: right"{% endif %}>
+            <input class="cell{% if column in totals %} numeric-cell{% endif %}" name="value" value="{{ row.data[column] }}"
+                   aria-label="{{ column }}, row {{ loop.index }}">
           </form>
         </td>
         {% endfor %}
@@ -65,8 +65,11 @@
     </tfoot>
     {% endif %}
   </table>
+  {% if not sheet.rows %}
+  <p class="grid-empty">No rows yet. Agents add rows here, or add one yourself.</p>
+  {% endif %}
 </div>
-<form hx-post="/tables/{{ sheet.name|urlquote }}/rows" hx-target="#grid-wrap" style="margin-top: 12px">
+<form class="grid-actions" hx-post="/tables/{{ sheet.name|urlquote }}/rows" hx-target="#grid-wrap">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <button class="btn secondary" type="submit">
     <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>Add row

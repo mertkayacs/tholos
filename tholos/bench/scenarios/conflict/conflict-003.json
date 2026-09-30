@@ -1,0 +1,9 @@
+{
+  "id": "conflict-003", "category": "conflict", "template": "b-conflict-row-recalculate", "agent": "Rashida",
+  "workspace": {"agents": [{"name": "Rashida", "role": "You record donations of books to a lending shelf.", "tools": ["table_read", "table_update", "finish"], "max_steps": 8}], "tables": [{"name": "copies", "columns": ["book", "count", "shelf"], "rows": [{"book": "River Walks", "count": 4, "shelf": "Travel"}]}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Two donated copies", "details": "Add two copies to the current River Walks count. If another edit intervenes, use the latest count as the starting point."},
+  "interfere": {"after_tool": "table_read", "table": "copies", "row_match": {"book": "River Walks"}, "set": {"count": 3}},
+  "reference": [{"tool": "table_read", "args": {"table": "copies", "query": null, "limit": null}}, {"tool": "table_update", "args": {"table": "copies", "row": 1, "values": {"book": null, "count": 6, "shelf": null}}}, {"tool": "table_read", "args": {"table": "copies", "query": null, "limit": null}}, {"tool": "table_update", "args": {"table": "copies", "row": 1, "values": {"book": null, "count": 5, "shelf": null}}}, {"tool": "finish", "args": {"summary": "Added two copies to the corrected count of three, leaving five on Travel."}}],
+  "expect": [{"type": "row", "table": "copies", "where": {"book": "River Walks"}, "has": {"count": 5, "shelf": "Travel"}}, {"type": "rows", "table": "copies", "count": 1}, {"type": "finished"}],
+  "max_steps": 8, "about": "Recalculates an increment using the latest count after a conflicting update."
+}

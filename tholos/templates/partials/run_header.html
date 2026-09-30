@@ -12,13 +12,13 @@
   <span class="badge">{{ run.status }}</span>
   {% endif %}
 </div>
-<div class="meta-row" style="margin-bottom: 24px">
+<div class="meta-row run-meta">
   <span><a href="/agents/{{ run.agent|urlquote }}">{{ run.agent }}</a> · {{ run.trigger_kind }}</span>
   <span class="num">Tokens in {{ run.tokens_in }} · out {{ run.tokens_out }}</span>
   {% if duration %}<span class="num">{{ duration }}</span>{% endif %}
   <span class="num">{{ run.step_count }} steps</span>
-  {% if run.error %}<span style="color: var(--danger)">{{ run.error }}</span>{% endif %}
-  <span class="spacer" style="flex: 1"></span>
+  {% if run.error %}<span class="error">{{ run.error }}</span>{% endif %}
+  <span class="spacer grow"></span>
   {% if run.status in ["queued", "running", "waiting"] %}
   <form hx-post="/runs/{{ run.id }}/stop" hx-target="#run-header" hx-confirm="Stop this run?" class="inline-form">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">

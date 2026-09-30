@@ -1,0 +1,9 @@
+{
+  "id": "conflict-007", "category": "conflict", "template": "b-conflict-note-revise", "agent": "Sabine",
+  "workspace": {"agents": [{"name": "Sabine", "role": "You revise school trip instructions.", "tools": ["note_read", "note_write", "finish"], "max_steps": 8}], "notes": [{"title": "Wetland trip", "body": "Meet at the south gate. Bring waterproof boots."}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Change meeting gate", "details": "Change south gate to west gate in Wetland trip, keeping the packing instructions and any staff additions."},
+  "interfere": {"after_tool": "note_read", "note": "Wetland trip", "append": "\nThe minibus seats 16 pupils."},
+  "reference": [{"tool": "note_read", "args": {"title": "Wetland trip"}}, {"tool": "note_write", "args": {"title": "Wetland trip", "text": "Meet at the west gate. Bring waterproof boots.", "mode": "replace"}}, {"tool": "note_read", "args": {"title": "Wetland trip"}}, {"tool": "note_write", "args": {"title": "Wetland trip", "text": "Meet at the west gate. Bring waterproof boots.\nThe minibus seats 16 pupils.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Updated the meeting gate while keeping boots and minibus details."}}],
+  "expect": [{"type": "note", "title": "Wetland trip", "contains": ["west gate", "waterproof boots", "16 pupils"], "not_contains": ["south gate"]}, {"type": "finished"}],
+  "max_steps": 8, "about": "Merges a gate correction with a concurrent minibus-capacity addition."
+}

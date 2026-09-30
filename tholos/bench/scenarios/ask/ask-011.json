@@ -1,0 +1,9 @@
+{
+  "id": "ask-011", "category": "ask", "template": "b-ask-destination", "agent": "Daphne",
+  "workspace": {"agents": [{"name": "Daphne", "role": "You organize survey summaries in notes.", "tools": ["ask", "note_read", "note_write", "finish"], "max_steps": 6}], "notes": [{"title": "Volunteer survey", "body": "Earlier survey: volunteers preferred Saturday shifts."}, {"title": "Visitor survey", "body": "Earlier survey: visitors asked for longer opening hours."}]},
+  "trigger": {"kind": "message", "text": "Append 'Most respondents want bicycle parking' to the survey note. Ask which survey I mean."},
+  "respond": {"answer": "Visitor survey."},
+  "reference": [{"tool": "ask", "args": {"question": "Should I append this result to Volunteer survey or Visitor survey?"}}, {"tool": "note_read", "args": {"title": "Visitor survey"}}, {"tool": "note_write", "args": {"title": "Visitor survey", "text": "\nMost respondents want bicycle parking.", "mode": "append"}}, {"tool": "finish", "args": {"summary": "Appended the bicycle parking result to Visitor survey."}}],
+  "expect": [{"type": "asked"}, {"type": "note", "title": "Visitor survey", "contains": ["longer opening hours", "bicycle parking"]}, {"type": "unchanged", "note": "Volunteer survey"}, {"type": "finished"}],
+  "max_steps": 6, "about": "Selects a destination note from the owner's answer and preserves its content."
+}

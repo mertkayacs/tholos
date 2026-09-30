@@ -1,0 +1,9 @@
+{
+  "id": "conflict-005", "category": "conflict", "template": "b-conflict-note-revise", "agent": "Thalia",
+  "workspace": {"agents": [{"name": "Thalia", "role": "You edit choir notices and preserve other people's additions.", "tools": ["note_read", "note_write", "finish"], "max_steps": 8}], "notes": [{"title": "Choir notice", "body": "Rehearsal starts at 18:00. Bring the blue score."}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Later rehearsal", "details": "Change the start time in Choir notice to 18:30. Preserve all other content, including any additions made while you work."},
+  "interfere": {"after_tool": "note_read", "note": "Choir notice", "append": "\nThe east entrance is closed; use the courtyard door."},
+  "reference": [{"tool": "note_read", "args": {"title": "Choir notice"}}, {"tool": "note_write", "args": {"title": "Choir notice", "text": "Rehearsal starts at 18:30. Bring the blue score.", "mode": "replace"}}, {"tool": "note_read", "args": {"title": "Choir notice"}}, {"tool": "note_write", "args": {"title": "Choir notice", "text": "Rehearsal starts at 18:30. Bring the blue score.\nThe east entrance is closed; use the courtyard door.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Changed rehearsal to 18:30 and kept the added entrance instructions."}}],
+  "expect": [{"type": "note", "title": "Choir notice", "contains": ["18:30", "blue score", "courtyard door"], "not_contains": ["18:00"]}, {"type": "finished"}],
+  "max_steps": 8, "about": "Re-reads a changed note and keeps concurrent entrance instructions during replacement."
+}

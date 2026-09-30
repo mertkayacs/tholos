@@ -1,10 +1,10 @@
-{% if rule_error %}<p class="error" role="alert" style="color: var(--danger)">{{ rule_error }}</p>{% endif %}
+{% if rule_error %}<p class="error" role="alert">{{ rule_error }}</p>{% endif %}
 {% if not rules %}
 <p class="muted">No rules. Without a rule, everything is allowed except web_fetch, which asks.</p>
 {% endif %}
 {% for rule in rules %}
-<div class="form-row" style="align-items: center; margin-bottom: 8px">
-  <p class="mono small" style="margin: 0; flex: 1">
+<div class="form-row list-row">
+  <p class="mono small flush grow">
     {{ rule.agent }} · {{ rule.tool }} · {{ rule.match }} · <strong>{{ rule.decision }}</strong></p>
   <form hx-post="/settings/rules/{{ rule.id }}/delete" hx-target="#rules-wrap"
         hx-confirm="Delete this rule?" class="inline-form">
@@ -42,6 +42,6 @@
         <option value="deny">deny</option>
       </select>
     </div>
-    <button class="btn primary" type="submit">Add rule</button>
+    <button class="btn secondary" type="submit">Add rule</button>
   </div>
 </form>

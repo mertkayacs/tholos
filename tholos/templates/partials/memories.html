@@ -2,9 +2,9 @@
 <p class="muted">No memories yet. Agents add their own with the remember tool; you can add one below.</p>
 {% endif %}
 {% for memory in memories %}
-<form hx-post="/memories/{{ memory.id }}/edit" hx-target="#memories-wrap" class="form-row" style="margin-bottom: 8px">
+<form hx-post="/memories/{{ memory.id }}/edit" hx-target="#memories-wrap" class="form-row memory-row">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
-  <div class="field" style="flex: 1; margin-bottom: 0">
+  <div class="field grow field-flush">
     <label for="mem-{{ memory.id }}" class="small muted">{{ memory.source }} · {{ memory.created_at|localtime }}</label>
     <input type="text" id="mem-{{ memory.id }}" name="text" value="{{ memory.text }}" maxlength="200" required>
   </div>
@@ -20,9 +20,9 @@
 {% endfor %}
 <form hx-post="/agents/{{ agent.name|urlquote }}/memories" hx-target="#memories-wrap" data-reset class="form-row">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
-  <div class="field" style="flex: 1; margin-bottom: 0">
+  <div class="field grow field-flush">
     <label for="mem-new">Add a memory</label>
     <input type="text" id="mem-new" name="text" maxlength="200" required>
   </div>
-  <button class="btn primary" type="submit">Add</button>
+  <button class="btn secondary" type="submit">Add</button>
 </form>

@@ -1,0 +1,9 @@
+{
+  "id": "web_research-003", "category": "web_research", "template": "b-web-product-list", "agent": "Edda",
+  "workspace": {"agents": [{"name": "Edda", "role": "You keep a shortlist of available plants.", "tools": ["web_fetch", "table_add", "table_read", "finish"], "max_steps": 5}], "tables": [{"name": "plant_shortlist", "columns": ["variety", "price", "pot"], "rows": []}], "rules": [{"agent": "Edda", "tool": "web_fetch", "match": "heathnursery.test", "decision": "allow"}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Available herbs", "details": "Read https://heathnursery.test/herbs. Add the available herbs to plant_shortlist; skip sold-out items."},
+  "fixtures": {"https://heathnursery.test/herbs": "<html><head><title>Heath Nursery herbs</title></head><body><h1>Herbs</h1><ul><li>Lemon thyme, 9 cm pot, 3.10, available.</li><li>French tarragon, 12 cm pot, 4.80, sold out.</li><li>Winter savory, 9 cm pot, 2.90, available.</li></ul></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://heathnursery.test/herbs"}}, {"tool": "table_add", "args": {"table": "plant_shortlist", "rows": [{"variety": "Lemon thyme", "price": 3.1, "pot": "9 cm"}, {"variety": "Winter savory", "price": 2.9, "pot": "9 cm"}]}}, {"tool": "finish", "args": {"summary": "Shortlisted lemon thyme and winter savory."}}],
+  "expect": [{"type": "rows", "table": "plant_shortlist", "count": 2}, {"type": "row", "table": "plant_shortlist", "where": {"variety": "Lemon thyme"}, "has": {"price": 3.1}}, {"type": "row", "table": "plant_shortlist", "where": {"variety": "Winter savory"}, "has": {"price": 2.9}}, {"type": "finished"}],
+  "max_steps": 5, "about": "Records available herbs while excluding a sold-out fixture product."
+}

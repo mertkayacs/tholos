@@ -1,0 +1,9 @@
+{
+  "id": "conflict-002", "category": "conflict", "template": "b-conflict-row-preserve", "agent": "Aksel",
+  "workspace": {"agents": [{"name": "Aksel", "role": "You maintain telescope booking records.", "tools": ["table_read", "table_update", "finish"], "max_steps": 8}], "tables": [{"name": "observations", "columns": ["target", "slot", "confirmed"], "rows": [{"target": "M31", "slot": "21:30", "confirmed": "no"}, {"target": "M13", "slot": "22:10", "confirmed": "no"}, {"target": "NGC 7000", "slot": "23:00", "confirmed": "yes"}]}]},
+  "trigger": {"kind": "message", "text": "Confirm the M31 booking. Keep whatever slot is current when you save."},
+  "interfere": {"after_tool": "table_read", "table": "observations", "row_match": {"target": "M31"}, "set": {"slot": "21:50"}},
+  "reference": [{"tool": "table_read", "args": {"table": "observations", "query": "target:M31", "limit": null}}, {"tool": "table_update", "args": {"table": "observations", "row": 1, "values": {"target": null, "slot": null, "confirmed": "yes"}}}, {"tool": "table_read", "args": {"table": "observations", "query": "target:M31", "limit": null}}, {"tool": "table_update", "args": {"table": "observations", "row": 1, "values": {"target": null, "slot": null, "confirmed": "yes"}}}, {"tool": "finish", "args": {"summary": "Confirmed M31 at the revised 21:50 slot."}}],
+  "expect": [{"type": "row", "table": "observations", "where": {"target": "M31"}, "has": {"slot": "21:50", "confirmed": "yes"}}, {"type": "row", "table": "observations", "where": {"target": "M13"}, "has": {"confirmed": "no"}}, {"type": "finished"}],
+  "max_steps": 8, "about": "Confirms a booking after re-reading a concurrently changed time slot."
+}

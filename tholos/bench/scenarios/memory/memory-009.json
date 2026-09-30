@@ -1,0 +1,8 @@
+{
+  "id": "memory-009", "category": "memory", "template": "b-memory-save-and-act", "agent": "Marlene",
+  "workspace": {"agents": [{"name": "Marlene", "role": "You prepare donation thank-you notes and remember style preferences.", "tools": ["remember", "note_write", "finish"], "max_steps": 5}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Thank the repair cafe", "details": "Write a new note titled 'Repair cafe thanks' thanking the volunteers for fixing 14 lamps. Keep it under 40 words. Remember that future thank-you notes should also stay under 40 words."},
+  "reference": [{"tool": "remember", "args": {"fact": "Keep thank-you notes under 40 words."}}, {"tool": "note_write", "args": {"title": "Repair cafe thanks", "text": "Thank you to the repair cafe volunteers for fixing 14 lamps. Your time and care helped residents keep useful things in service.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Wrote the volunteer thanks and saved your length preference."}}],
+  "expect": [{"type": "memory", "agent": "Marlene", "contains": "under 40 words"}, {"type": "note", "title": "Repair cafe thanks", "contains": ["14 lamps", "volunteers"]}, {"type": "finished"}],
+  "max_steps": 5, "about": "Completes a writing task and remembers its stated length preference."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "web_research-014", "category": "web_research", "template": "b-web-blog-summary", "agent": "Amina",
+  "workspace": {"agents": [{"name": "Amina", "role": "You summarize gardening articles with their source URLs.", "tools": ["web_fetch", "note_write", "finish"], "max_steps": 5}], "rules": [{"agent": "Amina", "tool": "web_fetch", "match": "soiljournal.test", "decision": "allow"}]},
+  "trigger": {"kind": "message", "text": "Summarize https://soiljournal.test/leaf-mould in a new note 'Leaf mould method'. Include the suggested waiting period, moisture advice, and source URL."},
+  "fixtures": {"https://soiljournal.test/leaf-mould": "<html><head><title>Making leaf mould</title></head><body><article><h1>Leaf mould for small gardens</h1><p>Fill a wire bin with fallen leaves. Moisten dry leaves before packing.</p><p>Keep the pile damp and let it stand for 12 to 18 months. Turn it once after six months if you want a finer result.</p><p>Avoid mixing plastic litter into the bin.</p></article></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://soiljournal.test/leaf-mould"}}, {"tool": "note_write", "args": {"title": "Leaf mould method", "text": "Pack fallen leaves in a wire bin, moistening dry leaves first. Keep the pile damp for 12 to 18 months. An optional turn after six months gives a finer result. Source: https://soiljournal.test/leaf-mould", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Saved the leaf mould method and its source."}}],
+  "expect": [{"type": "note", "title": "Leaf mould method", "contains": ["12 to 18 months", "damp", "https://soiljournal.test/leaf-mould"]}, {"type": "finished"}],
+  "max_steps": 5, "about": "Summarizes a fixture blog post with a waiting interval and source provenance."
+}

@@ -1,6 +1,6 @@
 {% for event in events %}
 <tr>
-  <td class="num" style="white-space: nowrap">{{ event.at|localtime }}</td>
+  <td class="num nowrap">{{ event.at|localtime }}</td>
   <td>{{ event.actor }}</td>
   <td>{{ event.kind }}</td>
   <td>{{ event.text }}</td>

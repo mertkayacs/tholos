@@ -12,7 +12,7 @@
 <div id="grid-wrap">
   {% include "partials/table_grid.html" %}
 </div>
-<h2>Recent changes</h2>
+<h2 class="table-changes">Recent changes</h2>
 {% if not changes %}<p class="muted">No changes yet.</p>{% endif %}
 {% for change in changes %}
 <p class="small muted">

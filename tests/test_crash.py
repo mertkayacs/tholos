@@ -35,4 +35,4 @@ def test_kill_and_restart_exactly_once(db):
     assert [step["tool"] for step in run["steps"]] == ["table_add", "finish"]
     assert len(w.get_table(db, "items")["rows"]) == 1
     assert len(w.recent_changes(db, "row")) == 1
-    assert len(run["messages"]) == 6
+    assert len(run["messages"]) == 5 and run["messages"][-1]["role"] == "assistant"

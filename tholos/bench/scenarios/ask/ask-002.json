@@ -1,0 +1,17 @@
+{
+  "id": "ask-002", "category": "ask", "template": "b-ask-target", "agent": "Pascal",
+  "workspace": {
+    "agents": [{"name": "Pascal", "role": "You keep a bicycle repair queue.", "tools": ["ask", "table_read", "table_update", "note_write", "finish"], "max_steps": 6}],
+    "tables": [{"name": "repairs", "columns": ["ticket", "bike", "status"], "rows": [{"ticket": "CY-81", "bike": "Red touring bike", "status": "queued"}, {"ticket": "CY-82", "bike": "Blue commuter", "status": "queued"}, {"ticket": "CY-83", "bike": "Cargo trike", "status": "waiting parts"}]}]
+  },
+  "trigger": {"kind": "task", "from": "you", "title": "Close the repair", "details": "One of the queued bikes has been collected. Mark it collected; ask me for the ticket."},
+  "respond": {"answer": "CY-81 was collected."},
+  "reference": [
+    {"tool": "ask", "args": {"question": "Which repair ticket was collected?"}},
+    {"tool": "table_read", "args": {"table": "repairs", "query": "ticket:CY-81", "limit": null}},
+    {"tool": "table_update", "args": {"table": "repairs", "row": 1, "values": {"ticket": null, "bike": null, "status": "collected"}}},
+    {"tool": "finish", "args": {"summary": "Marked CY-81 collected."}}
+  ],
+  "expect": [{"type": "asked"}, {"type": "rows", "table": "repairs", "count": 3}, {"type": "row", "table": "repairs", "where": {"ticket": "CY-81"}, "has": {"status": "collected"}}, {"type": "row", "table": "repairs", "where": {"ticket": "CY-82"}, "has": {"status": "queued"}}, {"type": "finished"}],
+  "max_steps": 6, "about": "Uses an owner's reply to identify the collected repair ticket."
+}

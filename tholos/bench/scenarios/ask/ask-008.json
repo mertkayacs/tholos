@@ -1,0 +1,9 @@
+{
+  "id": "ask-008", "category": "ask", "template": "b-ask-date", "agent": "Cormac",
+  "workspace": {"agents": [{"name": "Cormac", "role": "You record field trip reservations.", "tools": ["ask", "table_add", "finish"], "max_steps": 5}], "tables": [{"name": "visits", "columns": ["group", "date", "destination"], "rows": []}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Reserve museum visit", "details": "Record a visit for Year 7 to the Maritime Museum. Confirm the date with me first."},
+  "respond": {"answer": "2026-11-12."},
+  "reference": [{"tool": "ask", "args": {"question": "Which date should I record for the Year 7 Maritime Museum visit?"}}, {"tool": "table_add", "args": {"table": "visits", "rows": [{"group": "Year 7", "date": "2026-11-12", "destination": "Maritime Museum"}]}}, {"tool": "finish", "args": {"summary": "Recorded the Year 7 museum visit for November 12."}}],
+  "expect": [{"type": "asked"}, {"type": "rows", "table": "visits", "count": 1}, {"type": "row", "table": "visits", "where": {"group": "Year 7"}, "has": {"date": "2026-11-12", "destination": "Maritime Museum"}}, {"type": "finished"}],
+  "max_steps": 5, "about": "Obtains a trip date before creating the reservation row."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "ask-006", "category": "ask", "template": "b-ask-quantity", "agent": "Farid",
+  "workspace": {"agents": [{"name": "Farid", "role": "You keep a catering prep list.", "tools": ["ask", "note_write", "finish"], "max_steps": 5}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Soup prep note", "details": "Write a new note titled 'Thursday soup prep' for lentil soup. Ask me for the serving count and dietary restriction before drafting the note."},
+  "respond": {"answer": "18 servings, vegan. Use vegetable stock."},
+  "reference": [{"tool": "ask", "args": {"question": "How many servings and which dietary restrictions apply to Thursday's lentil soup?"}}, {"tool": "note_write", "args": {"title": "Thursday soup prep", "text": "Prepare lentil soup for 18 servings. Keep it vegan and use vegetable stock.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "Wrote the prep note for 18 vegan servings."}}],
+  "expect": [{"type": "asked"}, {"type": "note", "title": "Thursday soup prep", "contains": ["18", "vegan", "vegetable stock"], "not_contains": ["chicken stock"]}, {"type": "finished"}],
+  "max_steps": 5, "about": "Uses an answer with quantity and dietary constraints to write a prep note."
+}

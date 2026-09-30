@@ -101,3 +101,13 @@ def test_empty_sections_exact_rendering(db):
         "Call finish when done."
     )
     assert prompt.system(db, w.get_agent(db, aid)) == expected
+
+
+def test_table_read_description_documents_query_grammar(db):
+    aid = w.save_agent(db, None, "Scout", "You check.", None, ["table_read", "finish"])
+    description = (
+        "table_read(table, query?, limit?): read rows. query: col=value, "
+        "col!=value, col>=n, or words; empty for all rows."
+    )
+    assert tools.DESCRIPTIONS["table_read"] == description
+    assert "- " + description in prompt.system(db, w.get_agent(db, aid))

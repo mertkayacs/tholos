@@ -1,0 +1,9 @@
+{
+  "id": "ask-012", "category": "ask", "template": "b-ask-destination", "agent": "Olivier",
+  "workspace": {"agents": [{"name": "Olivier", "role": "You record supplier quotes using the confirmed currency.", "tools": ["ask", "table_add", "finish"], "max_steps": 5}], "tables": [{"name": "fabric_quotes", "columns": ["supplier", "per_metre", "currency"], "rows": [{"supplier": "Reed Loom", "per_metre": 14, "currency": "EUR"}]}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Log the linen quote", "details": "Sable Textiles quoted 11.80 per metre. The currency is missing; confirm it with me before logging."},
+  "respond": {"answer": "GBP, and keep the quoted number unchanged."},
+  "reference": [{"tool": "ask", "args": {"question": "Which currency is Sable Textiles' 11.80 per metre quote in?"}}, {"tool": "table_add", "args": {"table": "fabric_quotes", "rows": [{"supplier": "Sable Textiles", "per_metre": 11.8, "currency": "GBP"}]}}, {"tool": "finish", "args": {"summary": "Recorded Sable Textiles at GBP 11.80 per metre."}}],
+  "expect": [{"type": "asked"}, {"type": "rows", "table": "fabric_quotes", "count": 2}, {"type": "row", "table": "fabric_quotes", "where": {"supplier": "Sable Textiles"}, "has": {"per_metre": 11.8, "currency": "GBP"}}, {"type": "finished"}],
+  "max_steps": 5, "about": "Clarifies a quote's currency without inventing an exchange rate."
+}

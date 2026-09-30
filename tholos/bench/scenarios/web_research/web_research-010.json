@@ -1,0 +1,9 @@
+{
+  "id": "web_research-010", "category": "web_research", "template": "b-web-two-sources", "agent": "Maura",
+  "workspace": {"agents": [{"name": "Maura", "role": "You prepare travel connections from published timetables.", "tools": ["web_fetch", "note_write", "finish"], "max_steps": 6}], "rules": [{"agent": "*", "tool": "web_fetch", "match": "*.test", "decision": "allow"}]},
+  "trigger": {"kind": "message", "text": "Compare https://railquay.test/morning and https://islandboat.test/departures. In a new note 'Island connection', say whether the train arrival leaves at least 20 minutes before the ferry."},
+  "fixtures": {"https://railquay.test/morning": "<html><head><title>Morning harbour train</title></head><body><h1>Harbour service</h1><p>Departs Hill station at 08:05 and arrives Quay station at 08:42.</p></body></html>", "https://islandboat.test/departures": "<html><head><title>Island ferry timetable</title></head><body><h1>Morning ferry</h1><p>Leaves Quay pier at 09:10. Check-in closes at 09:00.</p></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://railquay.test/morning"}}, {"tool": "web_fetch", "args": {"url": "https://islandboat.test/departures"}}, {"tool": "note_write", "args": {"title": "Island connection", "text": "The train arrives at 08:42 and the ferry departs at 09:10, leaving 28 minutes. This meets the requested 20-minute gap. Ferry check-in closes at 09:00.", "mode": "replace"}}, {"tool": "finish", "args": {"summary": "The published times give a 28-minute train-to-ferry gap."}}],
+  "expect": [{"type": "note", "title": "Island connection", "contains": ["08:42", "09:10", "28 minutes", "09:00"]}, {"type": "finished"}],
+  "max_steps": 6, "about": "Combines two timetable fixtures and calculates the connection interval."
+}

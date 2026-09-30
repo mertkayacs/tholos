@@ -1,0 +1,9 @@
+{
+  "id": "ask-009", "category": "ask", "template": "b-ask-date", "agent": "Selma",
+  "workspace": {"agents": [{"name": "Selma", "role": "You organize library renewal reminders.", "tools": ["ask", "follow_up", "finish"], "max_steps": 5}]},
+  "trigger": {"kind": "message", "text": "Remind me to renew the atlas later. Ask how long to wait."},
+  "respond": {"answer": "In three hours, please."},
+  "reference": [{"tool": "ask", "args": {"question": "How long should I wait before reminding you to renew the atlas?"}}, {"tool": "follow_up", "args": {"minutes": 180, "note": "Remind the owner to renew the borrowed atlas."}}, {"tool": "finish", "args": {"summary": "Scheduled the atlas renewal reminder for three hours from now."}}],
+  "expect": [{"type": "asked"}, {"type": "follow_up", "min_minutes": 179, "max_minutes": 181}, {"type": "finished"}],
+  "max_steps": 5, "about": "Converts an owner's clarified reminder interval into minutes."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "web_research-011", "category": "web_research", "template": "b-web-two-sources", "agent": "Jasper",
+  "workspace": {"agents": [{"name": "Jasper", "role": "You compare venue capacities and hire prices.", "tools": ["web_fetch", "table_add", "finish"], "max_steps": 6}], "tables": [{"name": "venue_quotes", "columns": ["venue", "capacity", "hourly"], "rows": []}], "rules": [{"agent": "*", "tool": "web_fetch", "match": "*.test", "decision": "allow"}]},
+  "trigger": {"kind": "task", "from": "you", "title": "Hall comparison", "details": "Read https://ashhall.test/hire and https://brookroom.test/hire and log each venue's seated capacity and hourly rate in venue_quotes."},
+  "fixtures": {"https://ashhall.test/hire": "<html><head><title>Ash Hall hire</title></head><body><h1>Ash Hall</h1><p>Seats 80 people. Hire costs 25 per hour. Kitchen included.</p></body></html>", "https://brookroom.test/hire": "<html><head><title>Brook Room bookings</title></head><body><h1>Brook Room</h1><p>Seated capacity: 36. Hourly hire: 14. Standing capacity: 60.</p></body></html>"},
+  "reference": [{"tool": "web_fetch", "args": {"url": "https://ashhall.test/hire"}}, {"tool": "web_fetch", "args": {"url": "https://brookroom.test/hire"}}, {"tool": "table_add", "args": {"table": "venue_quotes", "rows": [{"venue": "Ash Hall", "capacity": 80, "hourly": 25}, {"venue": "Brook Room", "capacity": 36, "hourly": 14}]}}, {"tool": "finish", "args": {"summary": "Recorded seated capacities and hourly rates for both venues."}}],
+  "expect": [{"type": "rows", "table": "venue_quotes", "count": 2}, {"type": "row", "table": "venue_quotes", "where": {"venue": "Ash Hall"}, "has": {"capacity": 80, "hourly": 25}}, {"type": "row", "table": "venue_quotes", "where": {"venue": "Brook Room"}, "has": {"capacity": 36, "hourly": 14}}, {"type": "finished"}],
+  "max_steps": 6, "about": "Extracts comparable seated capacities instead of mixing standing and seated figures."
+}
