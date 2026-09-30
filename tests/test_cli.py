@@ -121,7 +121,7 @@ def test_cli_first_run_output(db, monkeypatch, capsys):
     cli.main([])
     assert capsys.readouterr().out == (
         "Tholos: http://127.0.0.1:7070\n"
-        "No model yet. Run: ollama pull hf.co/mertkayacs/Tholos-2B:Q4_K_M, "
+        "No model yet. Run: ollama pull hf.co/mertkayacs/Tholos-2B-GGUF:Q4_K_M, "
         "then open Settings > Detect.\n"
     )
     assert w.get_setting(db, "access_token") is None

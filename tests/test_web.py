@@ -177,6 +177,25 @@ def test_model_timeout_save_and_preserve(client, side):
     assert w.get_model(side, saved["id"])["timeout"] == 600
 
 
+@pytest.mark.parametrize("timeout", ["300", "90.5"])
+def test_model_form_timeout_field(client, side, timeout):
+    def timeout_inputs(html):
+        elements = TemplateHTML(html).elements
+        return [a for tag, a in elements if tag == "input" and a.get("name") == "timeout"]
+
+    html = client.get("/settings").text
+    (blank,) = timeout_inputs(html)
+    assert blank["type"] == "number" and blank["value"] == "120"
+    assert f'<label for="{blank["id"]}">Timeout (seconds)</label>' in html
+    hint = f'<p class="hint" id="{blank["aria-describedby"]}">Slow local machines may need more'
+    assert hint in html
+    values = {"name": "Local", "base_url": "http://localhost/v1", "model": "small"}
+    assert post(client, "/settings/models", values | {"timeout": timeout}).status_code == 200
+    assert w.list_models(side)[0]["timeout"] == float(timeout)
+    edit, blank = timeout_inputs(client.get("/settings").text)
+    assert edit["value"] == timeout and blank["value"] == "120"
+
+
 @pytest.mark.parametrize("timeout", ["invalid", "0", "-1", "inf", "nan"])
 def test_model_timeout_rejects_invalid_values(client, side, timeout):
     response = post(client, "/settings/models", {

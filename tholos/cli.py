@@ -82,7 +82,7 @@ def main(argv: list[str] | None = None) -> None:
             lines.append(f"Access token: {token}")
         if not w.list_models(db):
             lines.append(
-                "No model yet. Run: ollama pull hf.co/mertkayacs/Tholos-2B:Q4_K_M, "
+                "No model yet. Run: ollama pull hf.co/mertkayacs/Tholos-2B-GGUF:Q4_K_M, "
                 "then open Settings > Detect."
             )
     finally:

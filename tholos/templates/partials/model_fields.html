@@ -40,4 +40,11 @@
     <input type="number" id="model-tokens-{{ m.id if m else 'new' }}" name="max_tokens"
            value="{{ m.max_tokens if m else 512 }}" min="1">
   </div>
+  <div class="field">
+    <label for="model-timeout-{{ m.id if m else 'new' }}">Timeout (seconds)</label>
+    <input type="number" id="model-timeout-{{ m.id if m else 'new' }}" name="timeout"
+           value="{{ '%g'|format(m.timeout if m else 120) }}" min="1" step="any"
+           aria-describedby="model-timeout-help-{{ m.id if m else 'new' }}">
+    <p class="hint" id="model-timeout-help-{{ m.id if m else 'new' }}">Slow local machines may need more time.</p>
+  </div>
 </div>
