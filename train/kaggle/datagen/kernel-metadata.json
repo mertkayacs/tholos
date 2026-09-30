@@ -1,0 +1,14 @@
+{
+  "id": "mertilovski/tholos-datagen",
+  "title": "tholos-datagen",
+  "code_file": "datagen.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "machine_shape": "NvidiaTeslaT4",
+  "dataset_sources": ["mertilovski/tholos-src"],
+  "kernel_sources": [],
+  "competition_sources": []
+}

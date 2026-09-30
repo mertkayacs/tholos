@@ -15,7 +15,8 @@
     <div class="field">
       <label for="tg-chat">Owner chat id</label>
       <input type="text" id="tg-chat" name="owner_chat_id" value="{{ telegram.owner_chat_id }}"
-             inputmode="numeric">
+             inputmode="numeric" aria-describedby="tg-chat-help">
+      <p class="hint" id="tg-chat-help">Use a private chat with your bot; groups are not supported.</p>
     </div>
   </div>
   <div class="actions">

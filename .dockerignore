@@ -1,0 +1,8 @@
+*
+!pyproject.toml
+!uv.lock
+!LICENSE
+!tholos/
+!tholos/**
+tholos/**/__pycache__/
+tholos/**/*.py[cod]

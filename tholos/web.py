@@ -147,6 +147,8 @@ async def _csrf_error(request: Request, session: dict) -> str | None:
 
 class GuardMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.url.path == "/healthz" and request.method in {"GET", "HEAD"}:
+            return await call_next(request)
         state = request.app.state
         if state.loopback:
             hosts = request.headers.getlist("host")
@@ -1180,7 +1182,12 @@ async def favicon(request: Request) -> Response:
     return RedirectResponse("/static/favicon.svg")
 
 
+async def healthz(request: Request) -> Response:
+    return PlainTextResponse("ok")
+
+
 routes = [
+    Route("/healthz", healthz),
     Route("/", board),
     Route("/login", login_page),
     Route("/login", login, methods=["POST"]),

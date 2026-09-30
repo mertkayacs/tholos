@@ -2,15 +2,16 @@ import argparse
 import importlib
 import json
 import os
+import secrets
 from pathlib import Path
 
 from tholos import workspace as w
-from tholos.db import connect, init
+from tholos.db import connect, init, tx
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="tholos")
-    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--host", default=os.environ.get("THOLOS_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=7070)
     parser.add_argument("--home")
     commands = parser.add_subparsers(dest="command")
@@ -65,12 +66,34 @@ def main(argv: list[str] | None = None) -> None:
             db.close()
         return
     try:
-        app = importlib.import_module("tholos.web").app
+        os.environ["THOLOS_HOST"] = args.host
+        web = importlib.import_module("tholos.web")
     except ModuleNotFoundError as exc:
         if exc.name != "tholos.web":
             raise
         print("The web interface is not installed yet. The core CLI supports bench and export.")
         return
+    host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(args.host, args.host)
+    host = f"[{host}]" if ":" in host else host
+    lines = [f"Tholos: http://{host}:{args.port}"]
+    db = connect()
+    try:
+        init(db)
+        if not web.is_loopback(args.host):
+            with tx(db):
+                token = w.get_setting(db, "access_token")
+                if not token:
+                    token = secrets.token_urlsafe(24)
+                    w.set_setting(db, "access_token", token)
+            lines.append(f"Access token: {token}")
+        if not w.list_models(db):
+            lines.append(
+                "No model yet. Run: ollama pull hf.co/mertkayacs/Tholos-2B:Q4_K_M, "
+                "then open Settings > Detect."
+            )
+    finally:
+        db.close()
+    print("\n".join(lines), flush=True)
     import uvicorn
 
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(web.app, host=args.host, port=args.port)

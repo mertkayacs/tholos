@@ -104,10 +104,10 @@ class Poller:
                 log.warning("telegram poll failed: %s", exc)
                 await asyncio.sleep(5)
 
-    def _allowed(self, chat_id) -> bool:
+    def _allowed(self, chat_id, sender_id) -> bool:
         chat_id = str(chat_id)
         if chat_id == self.owner:
-            return True
+            return str(sender_id) == self.owner
         if chat_id not in self.ignored_chats:
             self.ignored_chats.add(chat_id)
             log.info("ignoring messages from chat %s", chat_id)
@@ -124,7 +124,7 @@ class Poller:
 
     async def _handle_callback(self, callback: dict) -> None:
         chat_id = (callback.get("message") or {}).get("chat", {}).get("id")
-        if not self._allowed(chat_id):
+        if not self._allowed(chat_id, (callback.get("from") or {}).get("id")):
             return
         parsed = self.check_callback(callback.get("data", ""))
         if parsed is None:
@@ -155,7 +155,7 @@ class Poller:
 
     async def _handle_message(self, message: dict) -> None:
         chat_id = message.get("chat", {}).get("id")
-        if not self._allowed(chat_id):
+        if not self._allowed(chat_id, (message.get("from") or {}).get("id")):
             return
         text = message["text"].strip()
         reply_to = (message.get("reply_to_message") or {}).get("message_id")
