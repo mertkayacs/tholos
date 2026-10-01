@@ -33,8 +33,9 @@ when a price falls to your target.
 Each agent has a role, a model, a schedule and a short list of tools, picked from thirteen. The tools let an agent
 create, read and edit tables, read and write notes, search the workspace, hand a task to a teammate, fetch a web
 page, ask you a question, remember a fact, schedule a follow-up and finish with a summary. Every call appears in
-the run timeline. Every change to a table or note keeps its author and version. A write to a row or note that
-changed since the agent last read it is refused until the agent reads the new value. A run cut off by a crash is
+the run timeline. Every change to a table or note keeps its author and version. An update to a row, or a rewrite
+of a note, is refused if someone changed it since the agent last read it, until the agent reads the new value.
+Appending to a note always goes through, because it keeps the other writer's text. A run cut off by a crash is
 retried after the restart, and each write lands once.
 
 Rules decide whether a call goes ahead, waits for your approval or is refused. A rule can cover one agent or
