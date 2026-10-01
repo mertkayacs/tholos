@@ -59,7 +59,8 @@ Tholos-2B is MiniCPM5-2B fine-tuned on Tholos work (pipeline and notebook in `tr
 Hugging Face as [Tholos-2B](https://huggingface.co/mertkayacs/Tholos-2B) and
 [Tholos-2B-GGUF](https://huggingface.co/mertkayacs/Tholos-2B-GGUF), and the public part of the training data is
 [tholos-trajectories](https://huggingface.co/datasets/mertkayacs/tholos-trajectories). On 8 shared vCPUs with 4
-threads, the Q4_K_M file of its base model reads 88 tokens a second and writes 28 (llama-bench b11263).
+threads, its Q4_K_M file reads 84 tokens a second and writes 24 (llama-bench b11263, measured while other jobs
+shared the machine). In the same pass, Granite 4.2-3B wrote 18 tokens a second and Qwen3.5-4B wrote 11.
 
 ## Tholos-Bench
 
@@ -91,8 +92,8 @@ score: it returned empty replies for every step under `json_schema` on this buil
 We measure the benchmark three ways, and one file scores differently on each. CPU llama.cpp with the JSON schema is
 the reproducible path: on the base model, a second run gave identical transcripts for all 160 scenarios. Ollama with
 the GGUF repo's template is the realistic default for most users. The Kaggle GPU table above is the cross-model
-comparison. MiniCPM5-2B passes 117, 96 and 112 of 160 on the three, and Tholos-2B passes 134 on CPU llama.cpp and
-137 on the GPU, so compare scores inside one path.
+comparison. MiniCPM5-2B passes 117, 96 and 112 of 160 on the three, and Tholos-2B passes 134, 136 and 137, so compare
+scores inside one path.
 
 ## Docker
 
