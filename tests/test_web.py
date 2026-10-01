@@ -550,6 +550,11 @@ def test_non_loopback_requires_login(home, side, stubs, monkeypatch):
         )
         assert bad.status_code == 403
         TemplateHTML(bad.text)
+        accented = client.post(
+            "/login", data={"token": "ğıdır"},
+            headers={"Origin": "http://attacker.test:7070"}, follow_redirects=False
+        )
+        assert accented.status_code == 403
         good = client.post(
             "/login", data={"token": token},
             headers={"Origin": "http://attacker.test:7070"}, follow_redirects=False

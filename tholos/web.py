@@ -1112,7 +1112,7 @@ async def login(request: Request) -> Response:
     expected = w.get_setting(db_of(request), "access_token") or ""
     form = await request.form()
     token = str(form.get("token", ""))
-    if not expected or not hmac.compare_digest(token, expected):
+    if not expected or not hmac.compare_digest(token.encode(), expected.encode()):
         return render(
             request,
             "login.html",
