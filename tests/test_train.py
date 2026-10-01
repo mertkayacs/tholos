@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "train"))
 
 import build as B  # noqa: E402
+import checks as C  # noqa: E402
 import packs as P  # noqa: E402
 import phrasing as F  # noqa: E402
 import pipeline as pipeline  # noqa: E402
@@ -1055,6 +1056,19 @@ def test_count_labels_cannot_hide_a_wrong_current_answer():
     steps = copy.deepcopy(scenario["reference"])
     steps[-1]["args"]["summary"] = f"Matching count: {count + 1}. Last count: {count}."
     assert not scripted_run(scenario, steps)["passed"]
+
+
+def test_count_reads_a_restated_filter_on_a_count_column_as_the_condition():
+    def scenario(summary):
+        return ({"checks": [{"kind": "count", "tool": "finish", "value": 1}],
+                 "trigger": {"text": "Count the quarantine rows where count is 18."}},
+                [{"role": "assistant", "content": json.dumps(
+                    {"thought": "", "tool": "finish", "args": {"summary": summary}})}])
+
+    assert not C.failures(*scenario("There are 1 rows in quarantine with count 18."))
+    assert not C.failures(*scenario("The count is 1."))
+    assert C.failures(*scenario("The count is 18."))
+    assert C.failures(*scenario("There are 18 rows with count 1."))
 
 
 def test_note_cleanup_preserves_time_range_direction():

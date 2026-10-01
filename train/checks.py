@@ -236,7 +236,14 @@ def _state_value(actual, expected):
     return matches(actual, expected)
 
 
-def _count(text, check):
+def _conditions(trigger):
+    """Numbers the request names after count or total: a filter value, not an answer."""
+    return {value for match, value in _numbers(trigger)
+            if re.search(r"\b(?:count|total)\b\W*(?:\w+\W+){0,2}$",
+                         re.split(r"[.;!?\n]", trigger[:match.start()])[-1].casefold())}
+
+
+def _count(text, check, conditions=frozenset()):
     if not _valid_statement(text.casefold()):
         return False
     if check.get("context") and not contains(text, check["context"]):
@@ -256,7 +263,7 @@ def _count(text, check):
         ))
         label = bool(re.search(
             r"\b(?:count|total)\b\s*(?:(?:is|are|of)\s*|[:=]\s*)?$", before,
-        ))
+        )) and value not in conditions
         if (re.search(r"\b(?:now|currently|actually|current|actual|today)\b"
                       r"(?:\s+(?:count|total|is|are|has|there|of)|\s*[:=]){0,3}\s*$", before)
                 or re.match(r"\s+(?:is|are)\s+(?:the\s+)?(?:current|actual)\b", tail)
@@ -648,7 +655,8 @@ def failures(scenario, messages):
             texts = _texts(calls, check)
             if check.get("tool") == "note_write":
                 texts = texts[-1:]
-            passed = any(_count(text, check) for text in texts)
+            conditions = _conditions(scenario["trigger"].get("text", ""))
+            passed = any(_count(text, check, conditions) for text in texts)
         elif kind == "compare":
             passed = any(_comparison(text, check) for text in _texts(calls, check))
         elif kind == "list":
