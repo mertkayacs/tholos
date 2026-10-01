@@ -98,9 +98,8 @@ scores inside one path.
 ## Docker
 
 ```sh
-docker build -t tholos https://github.com/mertkayacs/tholos.git#v0.1.0
 docker run -d --name tholos -p 127.0.0.1:7070:7070 -v tholos:/data \
-  --add-host=host.docker.internal:host-gateway tholos
+  --add-host=host.docker.internal:host-gateway ghcr.io/mertkayacs/tholos
 docker logs tholos
 ```
 
