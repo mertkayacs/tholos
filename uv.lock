@@ -315,12 +315,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "httpx" },
-    { name = "jinja2" },
-    { name = "openpyxl" },
-    { name = "python-multipart" },
-    { name = "starlette" },
-    { name = "uvicorn" },
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "openpyxl", specifier = ">=3.1" },
+    { name = "python-multipart", specifier = ">=0.0" },
+    { name = "starlette", specifier = ">=1.7" },
+    { name = "uvicorn", specifier = ">=0.54" },
 ]
 
 [package.metadata.requires-dev]

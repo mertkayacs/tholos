@@ -18,6 +18,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     THOLOS_HOME=/data \
     THOLOS_HOST=0.0.0.0
+# Behind a TLS proxy uvicorn sees plain http, so set THOLOS_COOKIE_SECURE=1 to force the
+# Secure flag on the session cookie.
 WORKDIR /data
 USER tholos
 VOLUME ["/data"]

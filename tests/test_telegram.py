@@ -1,6 +1,8 @@
 import asyncio
 import json
+import logging
 import types
+from contextlib import suppress
 
 import httpx
 import pytest
@@ -12,7 +14,7 @@ from tholos.db import now
 runner_stub = types.SimpleNamespace(calls=[])
 
 
-def _decide(db, approval_id, approve, always=False):
+async def _decide(db, approval_id, approve, always=False):
     runner_stub.calls.append(("decide", approval_id, approve, always))
 
 
@@ -259,3 +261,64 @@ def test_failed_run_and_owner_task_notify(db):
     texts = [m["text"] for m in payloads(calls, "sendMessage")]
     assert any(f"Run #{run_id}" in t and "failed" in t for t in texts)
     assert any("look at this" in t for t in texts)
+
+
+def test_http_error_never_logs_the_token(db, caplog):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(401, json={"ok": False, "error_code": 401})
+
+    poller = telegram.Poller(db, "secret-token-value", "42", transport=httpx.MockTransport(handler))
+
+    async def main():
+        task = asyncio.create_task(poller._loop())
+        deadline = asyncio.get_running_loop().time() + 5
+        while not calls and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.01)
+        await asyncio.sleep(0.05)
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        await poller.client.aclose()
+
+    with caplog.at_level(logging.WARNING, logger="tholos.telegram"):
+        asyncio.run(main())
+    assert calls
+    assert "HTTP 401" in caplog.text
+    assert "secret-token-value" not in caplog.text
+
+
+def test_loop_survives_unexpected_errors(db, monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json={"ok": True, "result": []})
+
+    poller = telegram.Poller(db, "token", "42", transport=httpx.MockTransport(handler))
+
+    async def broken_notify():
+        raise RuntimeError("database is locked")
+
+    real_sleep = asyncio.sleep
+
+    async def quick_sleep(delay, *args):
+        await real_sleep(0.01 if delay == 5 else delay)
+
+    monkeypatch.setattr(poller, "notify", broken_notify)
+    monkeypatch.setattr(asyncio, "sleep", quick_sleep)
+
+    async def main():
+        task = asyncio.create_task(poller._loop())
+        deadline = asyncio.get_running_loop().time() + 5
+        while len(calls) < 2 and asyncio.get_running_loop().time() < deadline:
+            await real_sleep(0.05)
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        await poller.client.aclose()
+
+    asyncio.run(main())
+    assert len(calls) >= 2

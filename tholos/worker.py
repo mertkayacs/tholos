@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
@@ -8,6 +9,8 @@ import httpx
 from tholos import prompt, runner
 from tholos import workspace as w
 from tholos.db import connect, init, now, tx
+
+log = logging.getLogger("tholos.worker")
 
 
 def recover(db: w.DB, at: str | None = None) -> None:
@@ -132,18 +135,23 @@ class Worker:
     async def _loop(self) -> None:
         try:
             while True:
-                self._wake.clear()
-                recover(self.db)
-                enqueue(self.db)
-                self._jobs = {job for job in self._jobs if not job.done()}
-                concurrency = max(1, int(w.get_setting(self.db, "workers", 1)))
-                while len(self._jobs) < concurrency:
-                    run = claim(self.db)
-                    if run is None:
-                        break
-                    self._jobs.add(asyncio.create_task(self._job(run)))
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(self._wake.wait(), timeout=2)
+                try:
+                    self._wake.clear()
+                    recover(self.db)
+                    enqueue(self.db)
+                    self._jobs = {job for job in self._jobs if not job.done()}
+                    concurrency = max(1, int(w.get_setting(self.db, "workers", 1)))
+                    while len(self._jobs) < concurrency:
+                        run = claim(self.db)
+                        if run is None:
+                            break
+                        self._jobs.add(asyncio.create_task(self._job(run)))
+                    with suppress(TimeoutError):
+                        await asyncio.wait_for(self._wake.wait(), timeout=2)
+                except Exception:
+                    # A supervisor loop must survive transient errors such as a locked database.
+                    log.exception("worker loop failed")
+                    await asyncio.sleep(5)
         finally:
             for job in self._jobs:
                 job.cancel()

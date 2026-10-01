@@ -131,7 +131,7 @@ def _set_session_cookie(request: Request, response: Response, session: dict, aut
         _session_value(request.app.state.secret, session["csrf"], authed),
         httponly=True,
         samesite="strict",
-        secure=request.url.scheme == "https",
+        secure=request.url.scheme == "https" or os.environ.get("THOLOS_COOKIE_SECURE") == "1",
     )
 
 
@@ -189,6 +189,9 @@ class GuardMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         for key, value in SECURITY_HEADERS.items():
             response.headers.setdefault(key, value)
+        if authed and not path.startswith("/static/"):
+            # Pages can render the access token and API key suffixes; caches must not keep them.
+            response.headers.setdefault("Cache-Control", "no-store")
         if getattr(request.state, "new_session", False):
             _set_session_cookie(request, response, session, session["authed"])
         return response
@@ -367,7 +370,10 @@ async def task_new(request: Request) -> Response:
     details = str(form.get("details", "")).strip()
     if not title:
         return _board_partial(request, "partials/working.html", "Give the task a title.")
-    w.add_task(db, title, details, to=to if to and to != "you" else None)
+    try:
+        w.add_task(db, title, details, to=to if to and to != "you" else None)
+    except ValueError as exc:
+        return _board_partial(request, "partials/working.html", str(exc))
     wake(request)
     return _board_partial(request, "partials/working.html", "Task added.")
 
@@ -399,9 +405,18 @@ async def approval_decide(request: Request) -> Response:
     if action not in {"approve", "deny", "always"}:
         raise HTTPException(404)
     if _pending(request, approval_id):
-        runner.decide(db, approval_id, approve=action != "deny", always=action == "always")
-        wake(request)
-        message = {"approve": "Approved.", "deny": "Denied.", "always": "Always allowed."}[action]
+        try:
+            await runner.decide(
+                db, approval_id, approve=action != "deny", always=action == "always"
+            )
+        except ValueError:
+            # The approval was decided concurrently, for example from Telegram.
+            message = "That approval was already decided."
+        else:
+            wake(request)
+            message = {"approve": "Approved.", "deny": "Denied.", "always": "Always allowed."}[
+                action
+            ]
     else:
         message = "That approval was already decided."
     return _waiting_page(request, message)
@@ -414,9 +429,13 @@ async def approval_answer(request: Request) -> Response:
     if not text:
         message = "Add an answer first."
     elif _pending(request, approval_id):
-        runner.answer(db, approval_id, text)
-        wake(request)
-        message = "Answer sent."
+        try:
+            runner.answer(db, approval_id, text)
+        except ValueError:
+            message = "That question was already answered."
+        else:
+            wake(request)
+            message = "Answer sent."
     else:
         message = "That question was already answered."
     return _waiting_page(request, message)
@@ -817,8 +836,11 @@ async def note_create(request: Request) -> Response:
     title = str((await request.form()).get("title", "")).strip()
     if not title:
         return render(request, "partials/note_new.html", error="Give the note a title.")
-    if w.get_note(db, title) is None:
-        w.write_note(db, title, "", "you")
+    try:
+        if w.get_note(db, title) is None:
+            w.write_note(db, title, "", "you")
+    except ValueError as exc:
+        return render(request, "partials/note_new.html", error=str(exc))
     return hx_redirect(f"/notes/{quote(title)}")
 
 
@@ -857,6 +879,10 @@ async def note_save(request: Request) -> Response:
         ctx = _note_ctx(db, title)
         ctx["note"] = ctx["note"] | {"body": text}
         return render(request, "partials/note_editor.html", conflict=True, **ctx)
+    except ValueError as exc:
+        ctx = _note_ctx(db, title)
+        ctx["note"] = ctx["note"] | {"body": text}
+        return render(request, "partials/note_editor.html", error=str(exc), **ctx)
     return toast(_note_render(request, "partials/note_editor.html"), "Note saved.")
 
 
@@ -864,7 +890,7 @@ async def note_save(request: Request) -> Response:
 
 
 def _events(db) -> list[dict]:
-    return list(reversed(w.events_since(db, 0, 200)))
+    return w.latest_events(db, 200)
 
 
 async def activity(request: Request) -> Response:

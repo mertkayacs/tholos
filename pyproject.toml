@@ -8,7 +8,14 @@ version = "0.1.0"
 description = "Always-on small agents that share one workspace."
 license = "Apache-2.0"
 requires-python = ">=3.11"
-dependencies = ["starlette", "uvicorn", "httpx", "jinja2", "openpyxl", "python-multipart"]
+dependencies = [
+    "starlette>=1.7",
+    "uvicorn>=0.54",
+    "httpx>=0.28",
+    "jinja2>=3.1",
+    "openpyxl>=3.1",
+    "python-multipart>=0.0",
+]
 
 [project.scripts]
 tholos = "tholos.cli:main"

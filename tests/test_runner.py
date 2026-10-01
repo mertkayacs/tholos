@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import threading
 import time
 from datetime import UTC, datetime, timedelta
@@ -116,7 +117,7 @@ def test_approval_decisions(db, setup, monkeypatch, approve, always):
     approval = w.list_waiting(db)[0]
     assert approval["args_hash"] == runner.args_hash({"url": "https://news.test/"})
     assert "web_fetch" in approval["preview"]
-    runner.decide(db, approval["id"], approve, always)
+    asyncio.run(runner.decide(db, approval["id"], approve, always))
     result = w.get_run(db, rid)["steps"][0]["result"]
     assert ("text" in result) == approve
     if not approve:
@@ -124,8 +125,39 @@ def test_approval_decisions(db, setup, monkeypatch, approve, always):
     if always:
         assert w.list_rules(db)[0]["match"] == "news.test"
     with pytest.raises(ValueError):
-        runner.decide(db, approval["id"], approve)
+        asyncio.run(runner.decide(db, approval["id"], approve))
     assert drive(db, scripted(db, [reply("finish", summary="Done")]))["status"] == "done"
+
+
+def test_decide_fetch_runs_off_the_event_loop(db, setup, monkeypatch):
+    monkeypatch.setattr(fetch, "FIXTURES", {"https://news.test/": "Story"})
+    w.queue_run(db, setup[0], "Read web", "message")
+    drive(db, scripted(db, [reply("web_fetch", url="https://news.test/")]))
+    approval = w.list_waiting(db)[0]
+    started, release = threading.Event(), threading.Event()
+    real_get = fetch.get
+
+    def slow_get(url, transport=None):
+        started.set()
+        assert release.wait(5)
+        return real_get(url, transport)
+
+    monkeypatch.setattr(fetch, "get", slow_get)
+    ticks = []
+
+    async def main():
+        decision = asyncio.create_task(runner.decide(db, approval["id"], True))
+        while not started.is_set():
+            await asyncio.sleep(0.01)
+        for _ in range(3):
+            await asyncio.sleep(0.01)
+            ticks.append(True)
+        release.set()
+        await decision
+
+    asyncio.run(main())
+    assert len(ticks) == 3
+    assert w.get_run(db, approval["run_id"])["steps"][0]["result"]["text"] == "Story"
 
 
 def test_approval_hash_and_new_denial(db, setup, monkeypatch):
@@ -137,13 +169,13 @@ def test_approval_hash_and_new_denial(db, setup, monkeypatch):
         "UPDATE approvals SET args=? WHERE id=?", ('{"url":"https://other.test/"}', approval["id"])
     )
     with pytest.raises(ValueError, match="changed"):
-        runner.decide(db, approval["id"], True)
+        asyncio.run(runner.decide(db, approval["id"], True))
     db.execute(
         "UPDATE approvals SET args=? WHERE id=?", (w.dumps(approval["args"]), approval["id"])
     )
     w.add_rule(db, "web_fetch", "deny", "Scout", "news.test")
     monkeypatch.setattr(fetch, "get", lambda *args: pytest.fail("Denied fetch executed"))
-    runner.decide(db, approval["id"], True)
+    asyncio.run(runner.decide(db, approval["id"], True))
     assert w.get_run(db, rid)["steps"][0]["result"]["error"] == "denied by a rule"
 
 
@@ -504,6 +536,46 @@ def test_stolen_long_lease_cannot_commit(db, setup):
     assert not w.get_table(db, "items")["rows"]
 
 
+def test_worker_loop_survives_unexpected_errors(db, setup, monkeypatch, caplog):
+    claims = []
+    real_claim, real_recover = worker.claim, worker.recover
+    recover_calls = 0
+
+    def broken_recover(db_arg, at=None):
+        nonlocal recover_calls
+        recover_calls += 1
+        if recover_calls == 2:  # the first call comes from start(), the second from the loop
+            raise RuntimeError("database is locked")
+        return real_recover(db_arg, at)
+
+    def counting_claim(db_arg, at=None, run_id=None):
+        claims.append(True)
+        return real_claim(db_arg, at, run_id)
+
+    real_sleep = asyncio.sleep
+
+    async def quick_sleep(delay, *args):
+        await real_sleep(0.01 if delay == 5 else delay)
+
+    monkeypatch.setattr(worker, "recover", broken_recover)
+    monkeypatch.setattr(worker, "claim", counting_claim)
+    monkeypatch.setattr(asyncio, "sleep", quick_sleep)
+
+    async def exercise():
+        service = worker.Worker(db)
+        service.start()
+        deadline = asyncio.get_running_loop().time() + 5
+        while len(claims) < 2 and asyncio.get_running_loop().time() < deadline:
+            service.wake()
+            await real_sleep(0.01)
+        await service.stop()
+
+    with caplog.at_level(logging.ERROR, logger="tholos.worker"):
+        asyncio.run(exercise())
+    assert len(claims) >= 2
+    assert "database is locked" in caplog.text
+
+
 def test_worker_concurrency_and_stop(db, setup):
     w.set_setting(db, "workers", 2)
     for _ in range(2):
@@ -566,11 +638,11 @@ def test_approved_local_write_exactly_once(db, setup):
     drive(db, scripted(db, [reply("table_add", table="items", rows=[{"title": "Approved"}])]))
     assert not w.get_table(db, "items")["rows"]
     approval = w.list_waiting(db)[0]
-    runner.decide(db, approval["id"], True)
+    asyncio.run(runner.decide(db, approval["id"], True))
     assert w.get_table(db, "items")["rows"][0]["data"]["title"] == "Approved"
     assert w.recent_changes(db, "row")[0]["run_id"] == rid
     with pytest.raises(ValueError):
-        runner.decide(db, approval["id"], True)
+        asyncio.run(runner.decide(db, approval["id"], True))
     assert len(w.get_table(db, "items")["rows"]) == 1
 
 
@@ -578,7 +650,7 @@ def test_always_allow_next_run(db, setup, monkeypatch):
     monkeypatch.setattr(fetch, "FIXTURES", {"https://news.test/": "Story"})
     w.queue_run(db, setup[0], "Read", "message")
     drive(db, scripted(db, [reply("web_fetch", url="https://news.test/")]))
-    runner.decide(db, w.list_waiting(db)[0]["id"], True, always=True)
+    asyncio.run(runner.decide(db, w.list_waiting(db)[0]["id"], True, always=True))
     drive(db, scripted(db, [reply("finish", summary="Done")]))
     w.queue_run(db, setup[0], "Read again", "message")
     run = drive(
@@ -633,7 +705,7 @@ def test_approved_finish_has_no_tool_response(db, setup):
     rid = w.queue_run(db, setup[0], "Check", "message")
     waiting = drive(db, scripted(db, [reply("finish", summary="Ready")]))
     assert waiting["status"] == "waiting" and len(waiting["messages"]) == 3
-    runner.decide(db, w.list_waiting(db)[0]["id"], True)
+    asyncio.run(runner.decide(db, w.list_waiting(db)[0]["id"], True))
     completed = w.get_run(db, rid)
     assert completed["status"] == "done" and completed["messages"] == waiting["messages"]
     assert completed["steps"][-1]["result"] == {"summary": "Ready"}
@@ -643,7 +715,7 @@ def test_denied_finish_keeps_feedback_before_successful_finish(db, setup):
     rule_id = w.add_rule(db, "finish", "ask")
     rid = w.queue_run(db, setup[0], "Check", "message")
     drive(db, scripted(db, [reply("finish", summary="Ready")]))
-    runner.decide(db, w.list_waiting(db)[0]["id"], False)
+    asyncio.run(runner.decide(db, w.list_waiting(db)[0]["id"], False))
     queued = w.get_run(db, rid)
     assert queued["status"] == "queued" and queued["messages"][-1]["role"] == "user"
     assert "the owner denied this" in queued["messages"][-1]["content"]

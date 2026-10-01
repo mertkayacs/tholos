@@ -67,6 +67,10 @@ def main(argv: list[str] | None = None) -> None:
         return
     os.environ["THOLOS_HOST"] = args.host
     web = importlib.import_module("tholos.web")
+    if web.is_loopback(args.host) and args.host not in {"127.0.0.1", "localhost", "::1"}:
+        # The web app only allows those three Host values in loopback mode; anything
+        # else in 127.0.0.0/8 would bind and then refuse every page with a 403.
+        parser.error("Only 127.0.0.1, localhost, and ::1 are supported loopback hosts")
     host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(args.host, args.host)
     host = f"[{host}]" if ":" in host else host
     lines = [f"Tholos: http://{host}:{args.port}"]

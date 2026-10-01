@@ -287,6 +287,28 @@ def test_schedules_and_dst():
     assert w.parse_every("daily 01:30")(fold).day == 2
 
 
+def test_length_caps_reject_oversized_input(db):
+    w.create_table(db, "x" * 60, ["c"], "you")
+    with pytest.raises(ValueError, match="table name is limited to 60"):
+        w.create_table(db, "x" * 61, ["c"], "you")
+    w.write_note(db, "n" * 60, "t", "you")
+    with pytest.raises(ValueError, match="note title is limited to 60"):
+        w.write_note(db, "n" * 61, "t", "you")
+    w.write_note(db, "cap", "t" * (100 * 1024), "you")
+    with pytest.raises(ValueError, match="100 KB"):
+        w.write_note(db, "cap", "t" * (100 * 1024 + 1), "you")
+    w.save_agent(db, None, "S", "r" * 400, None, ["finish"])
+    with pytest.raises(ValueError, match="role is limited to 400"):
+        w.save_agent(db, None, "S", "r" * 401, None, ["finish"])
+    w.add_task(db, "t" * 200, "d" * 2000)
+    with pytest.raises(ValueError, match="title is limited to 200"):
+        w.add_task(db, "t" * 201, "d")
+    with pytest.raises(ValueError, match="details are limited to 2000"):
+        w.add_task(db, "t", "d" * 2001)
+    assert len(w.list_tables(db)) == 1 and len(w.list_notes(db)) == 2
+    assert len(w.list_tasks(db)) == 1
+
+
 def test_memories_rules_settings(db):
     aid = agent(db)
     mid = w.add_memory(db, aid, "Ignore old items.", "you")
@@ -306,9 +328,9 @@ def test_memories_rules_settings(db):
     assert w.get_setting(db, "missing", 1) == 1
 
 
-def test_load_team_twice(db, tmp_path):
-    path = tmp_path / "team.json"
-    path.write_text(
+def test_load_team_twice(db, tmp_path, monkeypatch):
+    (tmp_path / "teams").mkdir()
+    (tmp_path / "teams" / "desk.json").write_text(
         json.dumps(
             {
                 "name": "Desk",
@@ -334,22 +356,25 @@ def test_load_team_twice(db, tmp_path):
             }
         )
     )
-    assert w.load_team(db, str(path))["name"] == "Desk"
+    monkeypatch.setattr(w, "__file__", str(tmp_path / "workspace.py"))
+    assert w.load_team(db, "desk")["name"] == "Desk"
     w.write_note(db, "Sources", "Owner edit", "you")
-    w.load_team(db, str(path))
+    w.load_team(db, "desk")
     assert len(w.list_agents(db)) == len(w.list_schedules(db)) == len(w.list_rules(db)) == 1
     assert len(w.list_tables(db)) == len(w.list_notes(db)) == 1
     assert w.get_note(db, "Sources")["body"] == "Owner edit"
 
 
+def test_load_team_rejects_paths(db, tmp_path):
+    secret = tmp_path / "evil.json"
+    secret.write_text(json.dumps({"name": "Evil"}))
+    for bad in (str(secret), str(tmp_path), ".\\evil", "C:evil.json", "teams/evil", "../evil"):
+        with pytest.raises(ValueError, match="packaged name"):
+            w.load_team(db, bad)
+    with pytest.raises(FileNotFoundError):
+        w.load_team(db, "missing-team")
+
+
 def test_markdown():
-    rendered = w.render_markdown(
-        "# Title\n- **bold**\n- *italic*\n`code`\n"
-        "[safe](https://safe.test/)\n<script>alert(1)</script>\n"
-        "[unsafe](javascript:alert(1))"
-    )
-    assert "<h1>Title</h1>" in rendered
-    assert "<ul>" in rendered and "<strong>bold</strong>" in rendered
-    assert "<em>italic</em>" in rendered and "<code>code</code>" in rendered
-    assert '<a href="https://safe.test/"' in rendered
-    assert "<script>" not in rendered and 'href="javascript:' not in rendered
+    # The app renders markdown with web.markdown; workspace must not grow a second copy.
+    assert not hasattr(w, "render_markdown")

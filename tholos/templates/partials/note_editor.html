@@ -13,6 +13,7 @@
   <div class="field">
     <label for="note-body">Body (Markdown)</label>
     <textarea class="note-editor" id="note-body" name="text" rows="12">{{ note.body }}</textarea>
+    {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   </div>
   <button class="btn primary" type="submit">Save</button>
 </form>

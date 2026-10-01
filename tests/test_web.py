@@ -17,7 +17,7 @@ from tholos import workspace as w
 runner_stub = types.SimpleNamespace(calls=[])
 
 
-def _decide(db, approval_id, approve, always=False):
+async def _decide(db, approval_id, approve, always=False):
     runner_stub.calls.append(("decide", approval_id, approve, always))
 
 
@@ -263,11 +263,44 @@ def test_empty_table_has_grid_empty_state(client, side):
     assert "No rows yet. Agents add rows here, or add one yourself." in response.text
 
 
+def test_activity_shows_the_newest_200_events_first(client, side):
+    for i in range(250):
+        w.add_event(side, "you", "test", str(i), f"event number {i}")
+    body = client.get("/activity").text
+    assert "event number 249" in body
+    assert "event number 50" in body
+    assert "event number 49" not in body
+    assert body.index("event number 249") < body.index("event number 200")
+    rows = client.get("/partials/activity").text
+    assert "event number 249" in rows and "event number 49" not in rows
+
+
+def test_forms_reject_oversized_input(client, side):
+    seed(side)
+    response = post(client, "/tasks", {"title": "t" * 201, "details": "d"})
+    assert response.status_code == 200
+    assert "200 characters" in response.headers["hx-trigger"]
+    assert all(task["title"] == "Old task" for task in w.list_tasks(side))
+    note = post(client, "/notes", {"title": "n" * 61})
+    assert note.status_code == 200 and "60 characters" in note.text
+    editor = post(client, "/notes/Focus", {"text": "x" * (100 * 1024 + 1), "expected_version": "1"})
+    assert editor.status_code == 200 and "100 KB" in editor.text
+    assert w.get_note(side, "Focus")["body"] == "# Focus\nSmall models."
+
+
 def test_security_headers(client):
     response = client.get("/")
     assert "default-src 'self'" in response.headers["content-security-policy"]
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["referrer-policy"] == "same-origin"
+
+
+def test_authed_pages_sent_no_store(client, side):
+    seed(side)
+    assert client.get("/").headers["cache-control"] == "no-store"
+    assert client.get("/settings").headers["cache-control"] == "no-store"
+    static = client.get("/static/app.css")
+    assert static.status_code == 200 and static.headers.get("cache-control") != "no-store"
 
 
 def test_telegram_settings_private_chat_help(client):
@@ -383,6 +416,28 @@ def test_approve_deny_always_answer(client, side):
     response = post(client, f"/approvals/{question_id}/answer", {"text": "yes, do it"})
     assert response.status_code == 200
     assert ("answer", question_id, "yes, do it") in runner_stub.calls
+
+
+def test_concurrent_decide_returns_friendly_partial(client, side, monkeypatch):
+    seed(side)
+    approval_id = _approval(side)
+    question_id = _approval(side, kind="question")
+
+    async def raced_decide(db, approval_id, approve, always=False):
+        raise ValueError("Approval changed while executing")
+
+    def raced_answer(db, approval_id, text):
+        raise ValueError("Approval is no longer pending or has the wrong kind")
+
+    monkeypatch.setattr(web.runner, "decide", raced_decide)
+    monkeypatch.setattr(web.runner, "answer", raced_answer)
+    response = post(client, f"/approvals/{approval_id}/decide", {"action": "approve"})
+    assert response.status_code == 200
+    assert "That approval was already decided." in response.headers["hx-trigger"]
+    response = post(client, f"/approvals/{question_id}/answer", {"text": "yes"})
+    assert response.status_code == 200
+    assert "That question was already answered." in response.headers["hx-trigger"]
+    assert not Worker.instances[-1].wakes
 
 
 def read_one_event(url, timeout=5):
@@ -503,6 +558,24 @@ def test_non_loopback_requires_login(home, side, stubs, monkeypatch):
         assert client.get("/").status_code == 200
 
 
+def test_cookie_secure_env_forces_secure_flag(home, side, stubs, monkeypatch):
+    from starlette.testclient import TestClient
+
+    monkeypatch.setenv("THOLOS_HOST", "0.0.0.0")
+    monkeypatch.setenv("THOLOS_COOKIE_SECURE", "1")
+    with TestClient(web.app, base_url="http://127.0.0.1:7070") as client:
+        response = client.get("/", follow_redirects=False)
+        assert response.status_code == 303 and "set-cookie" not in response.headers
+        good = client.post(
+            "/login",
+            data={"token": w.get_setting(side, "access_token")},
+            headers={"Origin": "http://127.0.0.1:7070"},
+            follow_redirects=False,
+        )
+        assert good.status_code == 303
+        assert "Secure" in good.headers["set-cookie"]
+
+
 def test_all_endpoints_are_coroutine_functions():
     # Lead review item 6: the DB connection is only touched on the event-loop
     # thread, so every endpoint must stay an async def.
@@ -516,6 +589,8 @@ def test_markdown_renderer():
     html_out = web.markdown("# Title\n- a\n- b\n**bold** *it* `code`\n```\n<x>\n```\n[l](https://x.y)")
     assert "<h1>Title</h1>" in html_out
     assert "<ul>" in html_out and "<li>a</li>" in html_out
+    assert "<li><strong>bold</strong></li>" in web.markdown("- **bold**")
+    assert "<li><em>italic</em></li>" in web.markdown("- *italic*")
     assert "<strong>bold</strong>" in html_out
     assert "<em>it</em>" in html_out and "<code>code</code>" in html_out
     assert "<pre><code>" in html_out and "&lt;x&gt;" in html_out

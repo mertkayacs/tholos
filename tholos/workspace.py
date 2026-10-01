@@ -1,5 +1,4 @@
 import csv
-import html
 import io
 import json
 import math
@@ -178,6 +177,8 @@ def save_agent(
 ) -> int:
     if not name.strip() or max_steps < 1 or not tools or len(set(tools)) != len(tools):
         raise ValueError("An agent needs a name, unique tools, and a positive step limit")
+    if len(role) > 400:
+        raise ValueError("An agent role is limited to 400 characters")
     with tx(db):
         return db.execute(
             "INSERT INTO agents(id,name,role,model_id,tools,max_steps,paused,created_at) "
@@ -271,6 +272,10 @@ def add_task(
     created_by: str = "you",
     parent_id: int | None = None,
 ) -> int:
+    if len(title) > 200:
+        raise ValueError("A task title is limited to 200 characters")
+    if len(details) > 2000:
+        raise ValueError("Task details are limited to 2000 characters")
     agent = get_agent(db, to) if to and to != "you" else None
     if to and to != "you" and agent is None:
         raise ValueError(f"Unknown agent: {to}")
@@ -408,6 +413,8 @@ def get_table(db: DB, name: str) -> dict | None:
 def create_table(
     db: DB, name: str, columns: list[str], actor: str, run_id: int | None = None
 ) -> int:
+    if len(name) > 60:
+        raise ValueError("A table name is limited to 60 characters")
     if (
         not name.strip()
         or not 1 <= len(columns) <= 12
@@ -550,6 +557,8 @@ def write_note(
 ) -> dict:
     if mode not in {"replace", "append"}:
         raise ValueError("Note mode must be replace or append")
+    if len(title) > 60:
+        raise ValueError("A note title is limited to 60 characters")
     with tx(db):
         before = get_note(db, title)
         if (
@@ -558,6 +567,8 @@ def write_note(
         ):
             raise Conflict(before or {"title": title, "version": 0})
         body = before["body"] + text if before and mode == "append" else text
+        if len(body.encode("utf-8")) > 100 * 1024:
+            raise ValueError("A note is limited to 100 KB of text")
         db.execute(
             "INSERT INTO notes(title,body,updated_by,updated_at) VALUES(?,?,?,?) "
             "ON CONFLICT(title) DO UPDATE SET body=excluded.body,version=notes.version+1,"
@@ -624,6 +635,10 @@ def events_since(db: DB, seq: int, limit: int = 200) -> list[dict]:
     return _many(db, "SELECT * FROM events WHERE seq>? ORDER BY seq LIMIT ?", (seq, limit))
 
 
+def latest_events(db: DB, limit: int = 200) -> list[dict]:
+    return _many(db, "SELECT * FROM events ORDER BY seq DESC LIMIT ?", (limit,))
+
+
 def recent_changes(
     db: DB, kind: str | None = None, ref_id: int | None = None, limit: int = 50
 ) -> list[dict]:
@@ -649,9 +664,10 @@ def search(db: DB, query: str, limit: int = 20) -> list[dict]:
 
 
 def load_team(db: DB, name_or_path: str) -> dict:
-    path = Path(name_or_path)
-    if not path.is_file():
-        path = Path(__file__).parent / "teams" / (name_or_path.removesuffix(".json") + ".json")
+    # Only packaged team names: the value comes from a form field, so it must not reach the disk.
+    if "/" in name_or_path or "\\" in name_or_path or re.match(r"[A-Za-z]:", name_or_path):
+        raise ValueError("A team must be referenced by its packaged name, not a path")
+    path = Path(__file__).parent / "teams" / (name_or_path.removesuffix(".json") + ".json")
     team = json.loads(path.read_text(encoding="utf-8"))
     with tx(db):
         for table in team.get("tables", []):
@@ -688,34 +704,3 @@ def load_team(db: DB, name_or_path: str) -> dict:
                     rule.get("match", "*"),
                 )
     return team
-
-
-def render_markdown(text: str) -> str:
-    text = html.escape(text)
-    text = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", text)
-    text = re.sub(r"\*\*([^*\n]+)\*\*", r"<strong>\1</strong>", text)
-    text = re.sub(r"\*([^*\n]+)\*", r"<em>\1</em>", text)
-    text = re.sub(
-        r"\[([^]\n]+)\]\((https?://[^\s)]+)\)", r'<a href="\2" rel="noreferrer">\1</a>', text
-    )
-    lines = []
-    listing = False
-    for line in text.splitlines():
-        if line.startswith("- "):
-            if not listing:
-                lines.append("<ul>")
-            listing = True
-            lines.append(f"<li>{line[2:]}</li>")
-            continue
-        if listing:
-            lines.append("</ul>")
-            listing = False
-        heading = re.match(r"^(#{1,6}) (.*)$", line)
-        lines.append(
-            f"<h{len(heading[1])}>{heading[2]}</h{len(heading[1])}>"
-            if heading
-            else f"<p>{line}</p>"
-        )
-    if listing:
-        lines.append("</ul>")
-    return "\n".join(lines)

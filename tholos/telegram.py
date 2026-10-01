@@ -66,7 +66,9 @@ class Poller:
 
     async def api(self, method: str, **data) -> dict:
         response = await self.client.post(f"/{method}", json=data)
-        response.raise_for_status()
+        # The URL embeds the bot token, so raise the status code alone, never the URL.
+        if response.status_code >= 400:
+            raise ValueError(f"Telegram {method} failed: HTTP {response.status_code}")
         payload = response.json()
         if not payload.get("ok"):
             raise ValueError(f"Telegram {method} failed: {payload.get('description', '?')}")
@@ -110,7 +112,7 @@ class Poller:
                     self.offset = max(self.offset, update["update_id"] + 1)
                     await self.handle_update(update)
                 await self.notify()
-            except (httpx.HTTPError, ValueError, KeyError) as exc:
+            except Exception as exc:
                 log.warning("telegram poll failed: %s", exc)
                 await asyncio.sleep(5)
 
@@ -147,7 +149,7 @@ class Poller:
         if not row or row[0] != "pending":
             await self._answer_cb(callback, "Already decided.")
             return
-        runner.decide(
+        await runner.decide(
             self.db, approval_id, approve=action != "d", always=action == "w"
         )
         self._wake()
@@ -182,7 +184,11 @@ class Poller:
                 )
                 return
             agent_name = agents[0]["name"]
-        w.add_task(self.db, title, to=agent_name, created_by="telegram")
+        try:
+            w.add_task(self.db, title, to=agent_name, created_by="telegram")
+        except ValueError as exc:
+            await self.api("sendMessage", chat_id=chat_id, text=str(exc))
+            return
         self._wake()
         await self.api("sendMessage", chat_id=chat_id, text=f"Task added for {agent_name}.")
 

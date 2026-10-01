@@ -296,7 +296,7 @@ def _resume(
     w.add_event(db, "you", "approval", str(approval["id"]), state)
 
 
-def decide(db: w.DB, approval_id: int, approve: bool, always: bool = False) -> None:
+async def decide(db: w.DB, approval_id: int, approve: bool, always: bool = False) -> None:
     approval, run, agent = _pending(db, approval_id, "approve")
     target = rules.target(approval["tool"], approval["args"])
     external = None
@@ -305,7 +305,8 @@ def decide(db: w.DB, approval_id: int, approve: bool, always: bool = False) -> N
         and approval["tool"] == "web_fetch"
         and rules.check(db, agent["name"], approval["tool"], target) != "deny"
     ):
-        external = _web(approval["args"])
+        # The fetch can take up to 15 s, so it must not run on the event loop thread.
+        external = await asyncio.to_thread(_web, approval["args"])
     with tx(db):
         current, current_run, agent = _pending(db, approval_id, "approve")
         if current["args_hash"] != approval["args_hash"] or current_run["fence"] != run["fence"]:

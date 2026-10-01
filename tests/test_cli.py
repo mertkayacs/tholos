@@ -130,7 +130,6 @@ def test_cli_first_run_output(db, monkeypatch, capsys):
 @pytest.mark.parametrize(
     "host,url",
     [
-        ("127.0.0.2", "http://127.0.0.2:7070"),
         ("localhost", "http://localhost:7070"),
         ("::1", "http://[::1]:7070"),
     ],
@@ -145,6 +144,19 @@ def test_cli_loopback_hides_token_and_configured_model_hint(db, monkeypatch, cap
     monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: None)
     cli.main(["--host", host])
     assert capsys.readouterr().out == f"Tholos: {url}\n"
+
+
+@pytest.mark.parametrize("host", ["127.0.0.2", "127.1.2.3", "127.255.255.254"])
+def test_cli_refuses_other_loopback_hosts(db, monkeypatch, capsys, host):
+    import uvicorn
+
+    calls = []
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--host", host])
+    assert exc.value.code == 2
+    assert not calls
+    assert "Only 127.0.0.1, localhost, and ::1" in capsys.readouterr().err
 
 
 def test_cli_environment_host_enables_auth_and_reuses_token(db, monkeypatch, capsys):

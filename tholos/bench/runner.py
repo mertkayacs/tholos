@@ -312,7 +312,7 @@ async def _execute(
         if approval["kind"] == "question" and "answer" in respond:
             runner.answer(db, approval["id"], respond["answer"])
         elif approval["kind"] == "approve" and "approve" in respond:
-            runner.decide(db, approval["id"], respond["approve"])
+            await runner.decide(db, approval["id"], respond["approve"])
         else:
             return
 
