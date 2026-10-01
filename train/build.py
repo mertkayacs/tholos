@@ -5,10 +5,10 @@ Usage:
   python train/build.py --rollouts rollouts.jsonl --scenarios scenarios.jsonl --regrade
 
 Keeps a rollout when: it passed the semantic audit, it has zero invalid outputs, no call repeats
-back to back, no call appears more than twice, every thought is at most 240
-characters, and it ends with finish. Near-duplicate trajectories inside a
-template are dropped. The val split gets whole templates, about 8 percent of
-kept trajectories.
+back to back, no call appears more than twice, every table update follows a read of that
+table, every thought is at most 240 characters, and it ends with finish. Near-duplicate
+trajectories inside a template are dropped. The val split gets whole templates, about 8
+percent of kept trajectories.
 
 --regrade first recomputes the training-check failures of each rollout with the current
 checks.py, using the scenario with the same id from the --scenarios files. Runtime failures
@@ -73,6 +73,12 @@ def keep(result):
     counts = Counter(steps)
     if counts and max(counts.values()) > 2:
         return False, "call repeated more than twice"
+    read = set()
+    for tool, args in steps:
+        if tool == "table_read":
+            read.add(json.loads(args).get("table"))
+        elif tool == "table_update" and json.loads(args).get("table") not in read:
+            return False, "update before read"
     if any(len(t) > 240 for t in thoughts):
         return False, "thought over 240 chars"
     return True, ""

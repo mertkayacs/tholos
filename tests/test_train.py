@@ -1110,6 +1110,20 @@ def _trajectory(*tools):
     return messages
 
 
+def _tables(*calls):
+    messages = []
+    for tool, table in calls:
+        args = {"summary": "done"}
+        if tool == "table_read":
+            args = {"table": table, "query": None, "limit": None}
+        elif tool == "table_update":
+            args = {"table": table, "row": 1, "values": {"minutes": 30}}
+        messages.append({"role": "assistant", "content": json.dumps(
+            {"thought": "working", "tool": tool, "args": args})})
+        messages.append({"role": "user", "content": "<tool_response>\n{}\n</tool_response>"})
+    return messages
+
+
 def test_build_keep_filters():
     good = _fake_rollout("t-x", 1, _trajectory("table_read", "finish"))
     ok, _ = B.keep(good)
@@ -1122,6 +1136,17 @@ def test_build_keep_filters():
     for case in bad_cases:
         ok, reason = B.keep(case)
         assert not ok, reason
+
+
+def test_build_rejects_an_update_before_a_read_of_that_table():
+    blind = _fake_rollout("t-x", 1, _tables(("table_update", "a"), ("finish", None)))
+    assert B.keep(blind) == (False, "update before read")
+    other_table = _fake_rollout("t-x", 2, _tables(
+        ("table_read", "b"), ("table_update", "a"), ("finish", None)))
+    assert B.keep(other_table) == (False, "update before read")
+    read_first = _fake_rollout("t-x", 3, _tables(
+        ("table_read", "a"), ("table_update", "a"), ("finish", None)))
+    assert B.keep(read_first) == (True, "")
 
 
 def test_build_split_never_shares_templates():
