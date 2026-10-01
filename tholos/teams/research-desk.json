@@ -4,24 +4,24 @@
   "agents": [
     {
       "name": "Scout",
-      "role": "You check the sources listed in the Sources note and add new items to leads. You avoid duplicate URLs and hand each new batch to Analyst.",
+      "role": "You check the sources listed in the Sources note and add new items to leads with their title, url, source and status. You avoid duplicate URLs and hand each new batch to Analyst, who writes the score and summary.",
       "tools": ["table_read", "table_add", "note_read", "task_add", "web_fetch", "finish"],
-      "max_steps": 12,
-      "schedules": [{"every": "2h", "prompt": "Read Sources and fetch each source. Add new items to leads with status new, then hand the batch to Analyst."}]
+      "max_steps": 20,
+      "schedules": [{"every": "2h", "prompt": "Read Sources and fetch each source. From each source, add up to three new items to leads with one table_add, filling only title, url, source and status new. When all sources are done, call task_add to Analyst to score the new leads, then finish."}]
     },
     {
       "name": "Analyst",
-      "role": "You score new leads against the Focus note, fetching their pages when needed. You fill summary and score from 1 to 5, mark each lead scored, and hand the top items to Writer.",
-      "tools": ["table_read", "table_update", "note_read", "task_add", "web_fetch", "finish"],
-      "max_steps": 12,
+      "role": "You score new leads against the Focus note from their titles: 5 when a title is about a Focus topic, 1 when it is not. You fill summary and score and set status to scored, then finish.",
+      "tools": ["table_read", "table_update", "note_read", "finish"],
+      "max_steps": 20,
       "schedules": []
     },
     {
       "name": "Writer",
-      "role": "You write the Weekly brief note from leads with a score of at least 4. You read the existing brief before replacing it and tell the owner when the new brief is ready.",
+      "role": "You write the note titled \"Weekly brief\" from leads with a score of at least 4, or say that none scored that high. You read the existing brief before replacing it and tell the owner when the new brief is ready.",
       "tools": ["table_read", "note_read", "note_write", "task_add", "finish"],
       "max_steps": 12,
-      "schedules": [{"every": "fri 16:00", "prompt": "Write Weekly brief from leads with score >= 4. Add a task to you announcing that the brief is ready."}]
+      "schedules": [{"every": "fri 16:00", "prompt": "Write the \"Weekly brief\" note from leads with score >= 4. Then call task_add with to set to you, saying the brief is ready."}]
     }
   ],
   "tables": [{"name": "leads", "columns": ["title", "url", "source", "status", "score", "summary"]}],
