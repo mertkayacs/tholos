@@ -178,6 +178,26 @@ def test_approve_flow_calls_decide(db):
     assert {a["text"] for a in answers} == {"Approved.", "Denied.", "Always allowed."}
 
 
+def test_callback_answers_when_the_approval_was_decided_meanwhile(db, monkeypatch):
+    calls = []
+    poller = make_poller(db, calls)
+    approval_id = seed_approval(db)
+
+    async def decided(db, approval_id, approve, always=False):
+        raise ValueError("Approval is not pending")
+
+    monkeypatch.setattr(runner_stub, "decide", decided)
+
+    async def main():
+        await poller.handle_update(
+            {"update_id": 1, "callback_query": {
+                "id": "cb", "data": poller.callback("a", approval_id), "from": {"id": 42},
+                "message": {"chat": {"id": 42}}}})
+
+    asyncio.run(main())
+    assert [a["text"] for a in payloads(calls, "answerCallbackQuery")] == ["Already decided."]
+
+
 def test_message_creates_task_for_named_agent(db):
     calls = []
     poller = make_poller(db, calls)
@@ -241,6 +261,28 @@ def test_approval_notify_sends_buttons(db):
     buttons = messages[0]["reply_markup"]["inline_keyboard"][0]
     assert [b["text"] for b in buttons] == ["Approve", "Deny", "Always allow"]
     assert buttons[0]["callback_data"] == poller.callback("a", approval_id)
+
+
+def test_failed_send_is_retried_on_the_next_notify(db):
+    calls, failed = [], []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        if not failed:
+            failed.append(request)
+            return httpx.Response(500, json={"ok": False})
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+
+    poller = telegram.Poller(db, "token", "42", transport=httpx.MockTransport(handler))
+    seed_approval(db)
+
+    async def main():
+        with pytest.raises(ValueError):
+            await poller.notify()
+        await poller.notify()
+
+    asyncio.run(main())
+    assert len(payloads(calls, "sendMessage")) == 2
 
 
 def test_failed_run_and_owner_task_notify(db):

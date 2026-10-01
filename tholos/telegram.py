@@ -149,9 +149,14 @@ class Poller:
         if not row or row[0] != "pending":
             await self._answer_cb(callback, "Already decided.")
             return
-        await runner.decide(
-            self.db, approval_id, approve=action != "d", always=action == "w"
-        )
+        try:
+            await runner.decide(
+                self.db, approval_id, approve=action != "d", always=action == "w"
+            )
+        except ValueError:
+            # Decided in the browser between the check above and this call.
+            await self._answer_cb(callback, "Already decided.")
+            return
         self._wake()
         label = {"a": "Approved.", "d": "Denied.", "w": "Always allowed."}[action]
         await self._answer_cb(callback, label)
@@ -163,7 +168,13 @@ class Poller:
         text = message["text"].strip()
         reply_to = (message.get("reply_to_message") or {}).get("message_id")
         if reply_to is not None and reply_to in self.question_messages:
-            runner.answer(self.db, self.question_messages[reply_to], text)
+            try:
+                runner.answer(self.db, self.question_messages[reply_to], text)
+            except ValueError:
+                await self.api(
+                    "sendMessage", chat_id=chat_id, text="That question was already answered."
+                )
+                return
             self._wake()
             await self.api("sendMessage", chat_id=chat_id, text="Answer sent.")
             return
@@ -199,7 +210,7 @@ class Poller:
         for card in w.list_waiting(self.db):
             if card["id"] in self.notified_approvals:
                 continue
-            self.notified_approvals.add(card["id"])
+            # Mark a card only after its message is sent, so a failed send is retried.
             if card["kind"] == "question":
                 result = await self._tell(
                     f"{card['agent']} asks: {card['preview']}\n\n"
@@ -221,14 +232,15 @@ class Poller:
                     f"{card['agent']} wants to run {card['tool']}: {card['preview']}",
                     reply_markup={"inline_keyboard": keyboard},
                 )
+            self.notified_approvals.add(card["id"])
         for run in w.list_runs(self.db, status="failed", limit=10):
             if run["id"] not in self.seen_runs:
-                self.seen_runs.add(run["id"])
                 await self._tell(
                     f"Run #{run['id']} for {run['agent']} failed: "
                     f"{run['error'] or 'unknown'}.",
                 )
+                self.seen_runs.add(run["id"])
         for task in w.list_tasks(self.db, status="todo", limit=50):
             if task["agent"] is None and task["id"] not in self.seen_tasks:
-                self.seen_tasks.add(task["id"])
                 await self._tell(f"A task was handed to you: {task['title']}")
+                self.seen_tasks.add(task["id"])
