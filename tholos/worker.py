@@ -146,8 +146,11 @@ class Worker:
                         if run is None:
                             break
                         self._jobs.add(asyncio.create_task(self._job(run)))
+                    # On Python 3.11, wait_for can hold on to a stop() cancellation that lands
+                    # while it times out, so stop() never returns; asyncio.timeout does not.
                     with suppress(TimeoutError):
-                        await asyncio.wait_for(self._wake.wait(), timeout=2)
+                        async with asyncio.timeout(2):
+                            await self._wake.wait()
                 except Exception:
                     # A supervisor loop must survive transient errors such as a locked database.
                     log.exception("worker loop failed")
