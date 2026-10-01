@@ -8,7 +8,9 @@ import time
 from importlib.metadata import version
 from pathlib import Path
 
-MODEL = "openbmb/MiniCPM5-2B"
+# Tholos-2B: openbmb/MiniCPM5-2B, 2 epochs. Tholos-4B: Qwen/Qwen3.5-4B (same chat format).
+MODEL = os.environ.get("THOLOS_BASE_MODEL", "openbmb/MiniCPM5-2B")
+EPOCHS = float(os.environ.get("THOLOS_EPOCHS", "2"))
 UNSLOTH_VERSION = "2026.9.12"
 MAX_SEQ_LENGTH = 4096
 INSTRUCTION_PART = "<|im_start|>user\n"
@@ -148,7 +150,7 @@ def main():
             output_dir=str(WORK / "checkpoints"), max_length=MAX_SEQ_LENGTH,
             dataset_kwargs={"skip_prepare_dataset": True}, packing=False,
             per_device_train_batch_size=4, gradient_accumulation_steps=4,
-            num_train_epochs=2, learning_rate=2e-4, lr_scheduler_type="cosine",
+            num_train_epochs=EPOCHS, learning_rate=2e-4, lr_scheduler_type="cosine",
             warmup_ratio=0.03, fp16=True, bf16=False, gradient_checkpointing=True,
             per_device_eval_batch_size=1, fp16_full_eval=True, prediction_loss_only=True,
             eval_strategy="steps", eval_steps=200, save_strategy="steps", save_steps=200,
