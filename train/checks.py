@@ -626,8 +626,10 @@ def failures(scenario, messages):
         elif kind == "text":
             texts = (_note_texts(scenario, calls, check) if check.get("tool") == "note_write"
                      else _texts(calls, check))
+            excluded = check.get("excluded", [])
             passed = any(facts(text, check["facts"])
                          and _relations(text, check.get("sources", []), check["facts"])
+                         and not any(contains(text, item) for item in excluded)
                          for text in texts)
         elif kind == "task":
             passed = any(call.get("tool") == "task_add"
@@ -666,6 +668,10 @@ def failures(scenario, messages):
                                                  for line in items)
                 else:
                     raise ValueError(f"Unknown training note format: {check['style']}")
+        elif kind == "notes":
+            allowed = set(check["allowed"])
+            passed = all(call.get("tool") != "note_write"
+                         or call["args"].get("title") in allowed for call in calls)
         elif kind == "order":
             tools = [call.get("tool") for call in calls]
             before = next((index for index, tool in enumerate(tools)
