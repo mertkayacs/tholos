@@ -12,6 +12,8 @@ wake on a schedule, hand work to each other and stop to ask you before anything 
 one Python process and one SQLite file, and its default model, Tholos-2B, is a 1.6 GB file that runs on an
 ordinary CPU.
 
+<p align="center"><img src="docs/demo.webp" width="720" alt="A real Research desk run with Tholos-2B: setup in Settings, Scout filling the leads table on the board, and the Writer's weekly brief"></p>
+
 ## Quick start
 
 ```sh
