@@ -12,6 +12,8 @@ wake on a schedule, hand work to each other and stop to ask you before anything 
 one Python process and one SQLite file, and its default model, Tholos-2B, is a 1.6 GB file that runs on an
 ordinary CPU.
 
+**Tholos-2B is a 2B agent model built by senior AI engineer Mert Kaya:** it passes 137 of 160 Tholos-Bench scenarios on one Kaggle T4 GPU (Q4_K_M, llama.cpp with a JSON schema), 25 more than the model it was trained from ([benchmark](#tholos-bench)).
+
 <p align="center"><img src="docs/demo.webp" width="720" alt="A real Research desk run with Tholos-2B: setup in Settings, Scout filling the leads table on the board, and the Writer's weekly brief"></p>
 
 ## Quick start
@@ -124,3 +126,7 @@ Telegram token sit in the database, which only your user can read, and appear ma
 Apache-2.0. The name comes from the Tholos, the round house in the Athenian agora. Aristotle writes that the
 council's chairman kept the keys of the temples where the money and documents of the state were lodged, along with
 the state seal, and had to stay in the Round-house (Athenian Constitution 44.1).
+
+<a href="https://eschatialabs.com"><img src="https://raw.githubusercontent.com/mertkayacs/tholos/main/docs/assets/eschatia-labs.png" width="160" alt="Eschatia Labs"></a>
+
+[An Eschatia Labs project](https://eschatialabs.com). [Built by Mert Kaya](https://mertkayacs.com).
