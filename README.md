@@ -2,6 +2,8 @@
 
 Tholos runs small AI assistants that work on a schedule and share tables, notes and a task board. It brings recurring research and monitoring into one local workspace, with rules that allow, ask about or deny each action.
 
+<img src="https://raw.githubusercontent.com/mertkayacs/tholos/main/docs/demo.webp" width="720" alt="A recorded Research desk run with Tholos-2B, sped up: adding the model in Settings, Scout filling the leads table, Analyst scoring the rows and the Writer's weekly brief">
+
 [See Tholos](https://tholos.mertkayacs.com) or install it below.
 
 ## Quick start
@@ -49,4 +51,6 @@ The database stores API keys and the Telegram token, with file access restricted
 
 ## License
 
-[Apache-2.0](LICENSE). An [Eschatia Labs](https://eschatialabs.com) project by [Mert Kaya](https://mertkayacs.com).
+[Apache-2.0](LICENSE).
+
+<a href="https://eschatialabs.com"><picture><source media="(min-resolution: 2dppx)" srcset="https://eschatialabs.com/brand/lockup-46@2x.png"><img src="https://eschatialabs.com/brand/lockup-46@1x.png" width="124" height="46" alt="Eschatia Labs"></picture></a><br>An [Eschatia Labs](https://eschatialabs.com) project by [Mert Kaya](https://mertkayacs.com).
