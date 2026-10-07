@@ -71,7 +71,7 @@ def connect(path: str | None = None) -> sqlite3.Connection:
         path = str(home / "tholos.db")
     if path != ":memory:":
         fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
-        os.fchmod(fd, 0o600)
+        os.chmod(path, 0o600)
         os.close(fd)
     db = sqlite3.connect(path, isolation_level=None)
     db.row_factory = sqlite3.Row
