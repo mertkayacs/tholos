@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/mertkayacs/tholos"><img src="https://img.shields.io/github/stars/mertkayacs/tholos?style=flat&logo=github" alt="GitHub stars"></a>
-  <a href="https://huggingface.co/mertkayacs/Tholos-2B"><img src="https://img.shields.io/badge/HF%20downloads-919-725114?style=flat&logo=huggingface" alt="Hugging Face model downloads"></a>
+  <a href="https://huggingface.co/mertkayacs/Tholos-2B"><img src="https://img.shields.io/badge/HF%20downloads%20(2026--10--15)-919-725114?style=flat&logo=huggingface" alt="Hugging Face model downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat" alt="Apache-2.0"></a>
 </p>
 
@@ -20,7 +20,7 @@
 - **Open weights, data and benchmark** under Apache-2.0, including the Tholos-2B model, training trajectories and 160-scenario benchmark.
 - **One local SQLite database** keeps every tool call, workspace edit and version under your control.
 
-> "Tholos is one of the most complete open local agent setups: a workspace, a tool-use model and a benchmark you can run yourself." - Mert Kaya
+Tholos is one of the most complete open local agent setups: a workspace, a tool-use model and a benchmark you can run yourself.
 
 ## Quick start
 
