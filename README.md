@@ -1,4 +1,4 @@
-<h1 align="center">Tholos: the best local workspace for small AI assistants</h1>
+<h1 align="center">Tholos</h1>
 
 <p align="center"><b>Always-on small agents share tables, notes and tasks on your own machine, with scheduled runs and allow, ask or deny rules.</b></p>
 
@@ -11,16 +11,6 @@
 <picture><source media="(prefers-reduced-motion: reduce)" srcset="https://raw.githubusercontent.com/mertkayacs/tholos/main/docs/demo-still.webp"><img src="https://raw.githubusercontent.com/mertkayacs/tholos/main/docs/demo.webp" width="720" alt="A recorded Research desk run with Tholos-2B, sped up: adding the model in Settings, Scout filling the leads table, Analyst scoring the rows and the Writer's weekly brief"></picture>
 
 [See Tholos](https://tholos.mertkayacs.com) or install it below.
-
-## Why Tholos is one of the best local agent platforms
-
-- **Tholos-2B passes 137 of 160 Tholos-Bench scenarios**, 25 more than the MiniCPM5-2B base model it was fine-tuned from (Kaggle T4, Q4_K_M, llama.cpp with JSON schema decoding).
-- **Runs on a CPU**: the Q4_K_M file is about 1.6 GB and works in a typical laptop.
-- **Tholos-2B has 919 Hugging Face model downloads and 374 GGUF downloads** (2026-10-15).
-- **Open weights, data and benchmark** under Apache-2.0, including the Tholos-2B model, training trajectories and 160-scenario benchmark.
-- **One local SQLite database** keeps every tool call, workspace edit and version under your control.
-
-Tholos is one of the most complete open local agent setups: a workspace, a tool-use model and a benchmark you can run yourself.
 
 ## Quick start
 
@@ -38,13 +28,23 @@ The app is one Python process with a SQLite database. The default model's Q4_K_M
 
 Each assistant has its own role, model, schedule and tools. It can edit tables and notes, search the workspace, hand tasks to teammates and ask you questions. The timeline records every tool call; workspace edits keep their author and version.
 
-Rules allow an action, hold it for approval or deny it. Fetching a web page asks you first by default. Approval applies to the exact arguments shown to you. Conflicting writes require the assistant to read the latest version before updating it.
+Rules allow an action, hold it for approval or deny it. Fetching a web page asks you first by default. Approval applies to the exact arguments shown to you. Conflicting writes require the assistant to read the latest version before updating it. You can answer approvals and assistant questions in the browser or connect a private Telegram chat under **Settings**.
 
 Tholos validates each model step against the assistant's tool schema. It supports llama.cpp, Ollama and OpenAI-compatible chat completion servers. [Tholos-2B](https://huggingface.co/mertkayacs/Tholos-2B) documents model-server settings and runtime differences.
 
+## Models
+
+Each model turn is one JSON step containing a short thought, a tool name and its arguments. Tholos builds a schema from the assistant's allowed tools, validates the response and gives the model one retry with the validation error when a step is malformed.
+
+llama.cpp can constrain generation with the JSON schema. Ollama receives JSON mode because it reorders schema keys, while local validation still checks every step. Each model profile has its own endpoint, model name, JSON mode and timeout. The default timeout is 120 seconds and can be changed in **Settings**.
+
+Tholos-2B starts from MiniCPM5-2B and was fine-tuned on executed workspace tasks. Its [model card](https://huggingface.co/mertkayacs/Tholos-2B) documents the training and runtime settings, and the [Q4_K_M GGUF](https://huggingface.co/mertkayacs/Tholos-2B-GGUF) is available separately.
+
 ## Tholos-2B results
 
-Tholos-2B is a 2B tool-use model fine-tuned from MiniCPM5-2B on executed Tholos tasks. On Tholos-Bench, it passed **137 of 160 scenarios**, compared with **112 for MiniCPM5-2B**. Both ran on a Kaggle T4 with Q4_K_M weights, llama.cpp and JSON schema decoding.
+On Tholos-Bench, Tholos-2B passed **137 of 160 scenarios**, compared with **112 for MiniCPM5-2B**. Every row in the table ran on one Kaggle T4 with Q4_K_M weights, llama.cpp (CUDA build fdf5818), a 16,384-token context, JSON schema decoding, temperature 0 and the pinned benchmark clock.
+
+Tholos-Bench contains 160 scenarios in 14 categories. It checks the final workspace state after table edits, note changes, handoffs, approvals, write conflicts, local web research, hidden instructions and tasks where the correct action is to leave the workspace unchanged.
 
 | Model | Passed, of 160 |
 | --- | ---: |
@@ -59,33 +59,29 @@ Only Tholos-2B was fine-tuned for the step format. These scores measure workspac
 
 The [model card](https://huggingface.co/mertkayacs/Tholos-2B) gives the benchmark conditions and limits. [GGUF weights](https://huggingface.co/mertkayacs/Tholos-2B-GGUF), [training data](https://huggingface.co/datasets/mertkayacs/tholos-trajectories) and [training code](train/) are available separately.
 
+Run the benchmark against any OpenAI-compatible model server:
+
+```sh
+tholos bench --base-url http://127.0.0.1:8080/v1 --model model-name
+```
+
+## Docker
+
+The published container runs as an unprivileged user and stores its database in a named volume:
+
+```sh
+docker run -d --name tholos -p 127.0.0.1:7070:7070 -v tholos:/data \
+  --add-host=host.docker.internal:host-gateway ghcr.io/mertkayacs/tholos
+docker logs tholos
+```
+
+The log prints the access token. Add a model server from **Settings** with a URL the container can reach, such as `http://host.docker.internal:11434/v1`. Ollama listens on `127.0.0.1` by default, so its bind address must be reachable from the container first.
+
 ## Security
 
 Tholos listens on loopback by default. Keep it there for local use. It checks request hosts, same-origin requests and form CSRF tokens. Retrieved pages are labelled as untrusted input; web fetches are restricted to public HTTP and HTTPS addresses on ports 80 and 443. Only you can change approval rules.
 
 The database stores API keys and the Telegram token, with file access restricted to your user; the UI masks them. Review approvals and model-server settings before enabling a recurring team.
-
-## Frequently asked questions
-
-**What is Tholos?**
-
-Tholos is an open local platform where small AI assistants share tables, notes and tasks on your own computer. Each assistant has its own role, model and schedule, and rules let you allow, ask about or deny every action. Tholos-2B passed 137 of 160 Tholos-Bench scenarios.
-
-**How do I run Tholos locally?**
-
-Install Ollama, pull the Q4_K_M Tholos-2B GGUF file, then `uv tool install git+https://github.com/mertkayacs/tholos` and run `tholos`. The Web UI opens on `http://127.0.0.1:7070`, the database is a local SQLite file, and the default model is about 1.6 GB. Version 0.1.2 was released on 2026-10-01.
-
-**Is Tholos open source?**
-
-Yes. The Tholos code, the Tholos-2B model, the training trajectories and the Tholos-Bench benchmark are all under Apache-2.0. Version 0.1.2 was released on 2026-10-01, the project is built by Eschatia Labs, and you can find the code at github.com/mertkayacs/tholos. The app runs on Python 3.11 or newer.
-
-**What is Tholos-Bench?**
-
-Tholos-Bench is a 160-scenario benchmark that scores whether a model acting as an agent leaves a shared workspace in the right state. It covers approvals, handoffs, write conflicts, web research, hidden instructions and tasks where doing nothing is correct. Tholos-2B currently passes 137 of them.
-
-**How good is the Tholos-2B model?**
-
-Tholos-2B passes 137 of 160 Tholos-Bench scenarios on a Kaggle T4 with Q4_K_M weights and llama.cpp JSON schema decoding. That is 25 more than the MiniCPM5-2B model it was fine-tuned from. On CPU llama.cpp it passes 134 of 160. The Q4_K_M file is about 1.6 GB.
 
 ## Cite this
 
