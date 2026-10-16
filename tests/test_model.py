@@ -414,6 +414,60 @@ def test_ollama_object_mode_still_validates_and_retries(valid_retry):
         assert result.tool == "finish"
 
 
+def test_rejected_chat_template_kwargs_retries_without():
+    profile = PROFILE | {"id": 9101, "base_url": "https://strict.test/v1"}
+    bodies = []
+    replies = iter([
+        httpx.Response(
+            400, json={"error": {"message": "Unrecognized request argument: chat_template_kwargs"}}
+        ),
+        completion('{"thought":"OK","tool":"finish","args":{"summary":"Done"}}'),
+    ])
+
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        return next(replies)
+
+    result = model.step(profile, [], tools.schemas(["finish"]), httpx.MockTransport(handler))
+    assert result.error is None and result.tool == "finish"
+    assert bodies[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert "chat_template_kwargs" not in bodies[1]
+
+
+def test_rejected_chat_template_kwargs_remembered_per_profile():
+    profile = PROFILE | {"id": 9102, "base_url": "https://strict2.test/v1"}
+    bodies = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        bodies.append(body)
+        if "chat_template_kwargs" in body:
+            return httpx.Response(
+                400, json={"error": {"message": "Unknown field: chat_template_kwargs"}}
+            )
+        return completion('{"thought":"OK","tool":"finish","args":{"summary":"Done"}}')
+
+    for _ in range(2):
+        result = model.step(profile, [], tools.schemas(["finish"]), httpx.MockTransport(handler))
+        assert result.error is None
+    assert "chat_template_kwargs" in bodies[0]
+    assert "chat_template_kwargs" not in bodies[1]
+    assert "chat_template_kwargs" not in bodies[2]
+
+
+def test_unrelated_400_still_raises():
+    def handler(request):
+        return httpx.Response(400, json={"error": {"message": "Invalid model name"}})
+
+    with pytest.raises(httpx.HTTPStatusError):
+        model.step(
+            PROFILE | {"id": 9103, "base_url": "https://strict3.test/v1"},
+            [],
+            tools.schemas(["finish"]),
+            httpx.MockTransport(handler),
+        )
+
+
 def test_ollama_override_logs_once_per_profile_under_concurrency(caplog):
     caplog.set_level(logging.WARNING, logger="tholos.model")
     profile = PROFILE | {

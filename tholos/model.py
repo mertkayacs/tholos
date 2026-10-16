@@ -13,6 +13,7 @@ from tholos.workspace import dumps
 
 log = logging.getLogger(__name__)
 _OLLAMA_WARNED: set[tuple[int | None, str, str]] = set()
+_KWARGS_REJECTED: set[tuple[int | None, str, str]] = set()
 _OLLAMA_LOCK = Lock()
 
 
@@ -158,6 +159,7 @@ def step(
         "chat_template_kwargs": {"enable_thinking": False},
     }
     base_url = profile["base_url"].rstrip("/")
+    key = (profile.get("id"), base_url, profile["model"])
     parsed = urlsplit(base_url)
     ollama = (
         parsed.port == 11434
@@ -169,7 +171,6 @@ def step(
     mode = profile.get("json_mode", "schema")
     if ollama and mode == "schema":
         mode = "object"
-        key = (profile.get("id"), base_url, profile["model"])
         with _OLLAMA_LOCK:
             first = key not in _OLLAMA_WARNED
             _OLLAMA_WARNED.add(key)
@@ -188,6 +189,8 @@ def step(
         payload["response_format"] = {"type": "json_object"}
     elif mode != "none":
         raise ValueError("json_mode must be schema, object, or none")
+    if key in _KWARGS_REJECTED:
+        payload.pop("chat_template_kwargs", None)
     headers = {"Authorization": f"Bearer {profile['api_key']}"} if profile.get("api_key") else {}
     result = Step()
     with httpx.Client(
@@ -195,6 +198,15 @@ def step(
     ) as client:
         for attempt in range(2):
             response = client.post(base_url + "/chat/completions", json=payload, headers=headers)
+            if (
+                response.status_code == 400
+                and "chat_template_kwargs" in payload
+                and "chat_template_kwargs" in response.text
+            ):
+                # Strict endpoints reject unknown request fields; drop the kwarg and retry.
+                _KWARGS_REJECTED.add(key)
+                payload.pop("chat_template_kwargs")
+                continue
             response.raise_for_status()
             data = response.json()
             usage = data.get("usage") or {}
