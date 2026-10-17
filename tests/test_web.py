@@ -556,6 +556,17 @@ def test_csv_export_neutralizes_formula(client, side):
     assert "\n=cmd" not in response.text
 
 
+def test_table_with_dot_opens_and_exports(client, side):
+    w.create_table(side, "sales.2026", ["amount"], "you")
+    w.add_rows(side, "sales.2026", [{"amount": "5"}], "you")
+    page = client.get("/tables/sales.2026")
+    assert page.status_code == 200
+    assert "sales.2026" in page.text
+    export = client.get("/tables/sales.2026.csv")
+    assert export.status_code == 200
+    assert "amount" in export.text and "5" in export.text
+
+
 def test_non_loopback_requires_login(home, side, stubs, monkeypatch):
     from starlette.testclient import TestClient
     monkeypatch.setenv("THOLOS_HOST", "0.0.0.0")
