@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 import time
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -304,6 +305,13 @@ def wake(request: Request) -> None:
     request.app.state.worker.wake()
 
 
+def _save_error(exc: Exception, noun: str, name: str) -> str:
+    # A UNIQUE name conflict is a form error, like the other validation paths.
+    if isinstance(exc, sqlite3.IntegrityError):
+        return f"A {noun} named {name!r} already exists."
+    return str(exc)
+
+
 # Board
 
 
@@ -478,9 +486,11 @@ async def agent_create(request: Request) -> Response:
     values = _agent_form_values(form)
     try:
         agent_id = w.save_agent(db, None, **values)
-    except ValueError as exc:
+    except (ValueError, sqlite3.IntegrityError) as exc:
         return render(
-            request, "partials/agent_form.html", **_agent_form_ctx(db, None, str(exc)) | values
+            request,
+            "partials/agent_form.html",
+            **_agent_form_ctx(db, None, _save_error(exc, "agent", values["name"])) | values,
         )
     return hx_redirect(f"/agents/{quote(w.get_agent(db, agent_id)['name'])}")
 
@@ -699,11 +709,11 @@ async def table_create(request: Request) -> Response:
     columns = [c.strip() for c in str(form.get("columns", "")).split(",") if c.strip()]
     try:
         w.create_table(db, name, columns, "you")
-    except ValueError as exc:
+    except (ValueError, sqlite3.IntegrityError) as exc:
         return render(
             request,
             "partials/table_new.html",
-            error=str(exc),
+            error=_save_error(exc, "table", name),
             name=name,
             columns=str(form.get("columns", "")),
         )
@@ -966,8 +976,10 @@ async def model_save(request: Request) -> Response:
     api_key = str(form.get("api_key", "")) or (existing["api_key"] if existing else None)
     try:
         w.save_model(db, model_id, **values | {"api_key": api_key})
-    except ValueError as exc:
-        return _settings_page(request, "settings_models", model_error=str(exc))
+    except (ValueError, sqlite3.IntegrityError) as exc:
+        return _settings_page(
+            request, "settings_models", model_error=_save_error(exc, "model", values["name"])
+        )
     return _settings_page(request, "settings_models", "Model saved.")
 
 
