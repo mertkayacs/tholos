@@ -206,6 +206,32 @@ def test_model_timeout_rejects_invalid_values(client, side, timeout):
     assert "must be numbers" in response.text or "Invalid model settings" in response.text
 
 
+def test_duplicate_table_shows_form_error(client, side):
+    assert post(client, "/tables", {"name": "leads", "columns": "title"}).status_code == 200
+    response = post(client, "/tables", {"name": "leads", "columns": "title"})
+    assert response.status_code == 200
+    assert "already exists" in response.text
+    assert len(w.list_tables(side)) == 1
+
+
+def test_duplicate_agent_shows_form_error(client, side):
+    values = {"name": "Scout", "role": "Checks sources.", "tools": ["finish"], "max_steps": "12"}
+    assert post(client, "/agents", values).status_code == 200
+    response = post(client, "/agents", values)
+    assert response.status_code == 200
+    assert "already exists" in response.text
+    assert len(w.list_agents(side)) == 1
+
+
+def test_duplicate_model_shows_form_error(client, side):
+    values = {"name": "Local", "base_url": "http://localhost/v1", "model": "small"}
+    assert post(client, "/settings/models", values).status_code == 200
+    response = post(client, "/settings/models", values)
+    assert response.status_code == 200
+    assert "already exists" in response.text
+    assert len(w.list_models(side)) == 1
+
+
 def test_pages_seeded_db(client, side):
     agent_id = seed(side)
     run_id = w.queue_run(side, agent_id, "Scheduled: check", "schedule")
