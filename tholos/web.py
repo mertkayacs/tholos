@@ -19,6 +19,7 @@ from urllib.parse import quote, urlsplit
 import httpx
 from jinja2 import pass_context
 from starlette.applications import Starlette
+from starlette.convertors import Convertor, register_url_convertor
 from starlette.exceptions import HTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -1176,6 +1177,20 @@ async def healthz(request: Request) -> Response:
     return PlainTextResponse("ok")
 
 
+class _ExportFormat(Convertor):
+    # Only csv and xlsx are exports, so a name with a dot opens the table.
+    regex = "csv|xlsx"
+
+    def convert(self, value: str) -> str:
+        return value
+
+    def to_string(self, value: str) -> str:
+        return value
+
+
+register_url_convertor("export", _ExportFormat())
+
+
 routes = [
     Route("/healthz", healthz),
     Route("/", board),
@@ -1207,7 +1222,7 @@ routes = [
     Route("/runs/{id}/stop", run_stop, methods=["POST"]),
     Route("/tables", tables),
     Route("/tables", table_create, methods=["POST"]),
-    Route("/tables/{name}.{fmt}", table_export),
+    Route("/tables/{name}.{fmt:export}", table_export),
     Route("/tables/{name}", table_page),
     Route("/tables/{name}/rows", table_row_add, methods=["POST"]),
     Route("/tables/{name}/rows/{row_id}", table_cell_edit, methods=["PUT"]),
