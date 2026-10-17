@@ -373,6 +373,37 @@ def test_table_query_operator_characters(db, context, query, indexes):
     assert "ignored_columns" not in result and "hint" not in result
 
 
+@pytest.mark.parametrize(
+    "query,indexes",
+    [
+        ("O'Brien", [0]),
+        ("o'brien", [0]),
+        ("name=O'Brien", [0]),
+        ("name = O'Brien", [0]),
+    ],
+)
+def test_table_query_unbalanced_quote_matches(db, context, query, indexes):
+    run, agent = context
+    w.create_table(db, "contacts", ["name"], "you")
+    rows = w.add_rows(db, "contacts", [{"name": "O'Brien"}, {"name": "Lee"}], "you")
+    result = tools.run_tool(
+        db, run, agent, "table_read", {"table": "contacts", "query": query, "limit": None}
+    )
+    assert "error" not in result, result
+    assert [row["row"] for row in result["rows"]] == [rows[i] for i in indexes]
+
+
+@pytest.mark.parametrize("query", ['say="hello', "'", '"', "name='O", 'name"=x', "name='O'Brien"])
+def test_table_query_unbalanced_quote_never_errors(db, context, query):
+    run, agent = context
+    w.create_table(db, "contacts", ["name"], "you")
+    w.add_rows(db, "contacts", [{"name": "O'Brien"}], "you")
+    result = tools.run_tool(
+        db, run, agent, "table_read", {"table": "contacts", "query": query, "limit": None}
+    )
+    assert "error" not in result, result
+
+
 def test_table_query_operator_value_diagnostics(db, context, query_table):
     run, agent = context
     result = tools.run_tool(

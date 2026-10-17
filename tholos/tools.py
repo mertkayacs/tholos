@@ -133,6 +133,14 @@ def _number(text: str) -> Decimal | None:
         return None
 
 
+def _unquote(text: str) -> str:
+    try:
+        return shlex.split(text)[0]
+    except ValueError:
+        # An unbalanced quote is literal text, as in O'Brien.
+        return text
+
+
 def _matches(data: dict, conditions: list[tuple[str | None, str, str]]) -> bool:
     for column, op, wanted in conditions:
         value = data[column] if column else " ".join(str(v) for v in data.values())
@@ -161,16 +169,18 @@ def _filter(sheet: dict, query: str | None) -> tuple[list[dict], dict]:
     if not query or query.strip().casefold() in {"", "*", "all"}:
         return sheet["rows"], {}
     # Keep operators inside words, and split only unquoted comma and && separators.
+    # Quotes are ordinary characters outside a balanced quoted run, so a query like
+    # O'Brien stays one token instead of breaking the shell splitter.
     quoted = r"""'[^']*'|"(?:\\.|[^"\\])*"|\\."""
-    word = rf"""(?:[^\s,'"\\&]|{quoted}|&(?!&))+|&&|,|\S+"""
+    word = rf"""(?:{quoted}|[^\s,\\&]|&(?!&))+|&&|,|\S+"""
     head_pattern = rf"""((?:[^=!<>:~'"\\]|{quoted})*)(==|!=|>=|<=|[=:~<>])(.*)"""
     tokens, parts = [], []
     for raw in re.findall(word, query, re.DOTALL):
-        token = shlex.split(raw)[0]
+        token = _unquote(raw)
         head = re.fullmatch(head_pattern, raw, re.DOTALL)
         tokens.append(token)
         parts.append(
-            [shlex.split(part)[0] if part else "" for part in head.groups()] if head else [token]
+            [_unquote(part) if part else "" for part in head.groups()] if head else [token]
         )
     separators = {",", "and", "&&"}
     columns = {column.casefold(): column for column in sheet["columns"]}
