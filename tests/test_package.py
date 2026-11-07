@@ -4,4 +4,4 @@ import tholos
 
 
 def test_version():
-    assert tholos.__version__ == version("tholos") == "0.1.2"
+    assert tholos.__version__ == version("tholos") == "0.1.3"

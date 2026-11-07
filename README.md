@@ -242,7 +242,7 @@ Use [CITATION.cff](CITATION.cff), or this BibTeX:
   year = {2026},
   license = {Apache-2.0},
   url = {https://github.com/mertkayacs/tholos},
-  version = {0.1.2}
+  version = {0.1.3}
 }
 ```
 </details>
