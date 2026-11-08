@@ -82,7 +82,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" dist/* --verify-tag --notes-from-tag --title "$RELEASE_TAG"
+        # actions/checkout turns the annotated tag into a lightweight one, which would make the notes the commit subject
+        run: |
+          git fetch --force origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          gh release create "$RELEASE_TAG" dist/* --verify-tag --notes-from-tag --title "$RELEASE_TAG"
 
   pypi:
     if: ${{ vars.PYPI_PUBLISH == 'true' }}
